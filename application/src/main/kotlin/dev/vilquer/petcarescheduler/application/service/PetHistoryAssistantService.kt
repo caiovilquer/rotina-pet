@@ -10,6 +10,7 @@ import dev.vilquer.petcarescheduler.core.domain.household.HouseholdPermission
 import dev.vilquer.petcarescheduler.usecase.command.AddAssistantAnswerFeedbackCommand
 import dev.vilquer.petcarescheduler.usecase.command.AskPetHistoryQuestionCommand
 import dev.vilquer.petcarescheduler.usecase.contract.drivenports.AiInteractionRepositoryPort
+import dev.vilquer.petcarescheduler.usecase.contract.drivenports.AiInvocationContext
 import dev.vilquer.petcarescheduler.usecase.contract.drivenports.AssistantAnswerAudit
 import dev.vilquer.petcarescheduler.usecase.contract.drivenports.AssistantAnswerFeedback
 import dev.vilquer.petcarescheduler.usecase.contract.drivenports.AssistantAnswerKind
@@ -18,6 +19,8 @@ import dev.vilquer.petcarescheduler.usecase.contract.drivenports.ClockPort
 import dev.vilquer.petcarescheduler.usecase.contract.drivenports.EmbeddingPort
 import dev.vilquer.petcarescheduler.usecase.contract.drivenports.GroundedAnswerGeneratorPort
 import dev.vilquer.petcarescheduler.usecase.contract.drivenports.GroundingEvidence
+import dev.vilquer.petcarescheduler.usecase.contract.drivenports.GroundedAnswerGenerationException
+import dev.vilquer.petcarescheduler.usecase.contract.drivenports.EmbeddingException
 import dev.vilquer.petcarescheduler.usecase.contract.drivenports.SemanticSearchPort
 import dev.vilquer.petcarescheduler.usecase.contract.drivenports.SemanticSearchRequest
 import dev.vilquer.petcarescheduler.usecase.contract.drivenports.TransactionPort
@@ -32,10 +35,12 @@ data class PetHistoryAssistantSettings(
     val ragEnabled: Boolean = false,
     val maxQuestionCharacters: Int = 1_000,
     val retrievalLimit: Int = 5,
+    val minimumSemanticScore: Double = 0.08,
 ) {
     init {
         require(maxQuestionCharacters in 100..4_000) { "assistant_question_limit_invalid" }
         require(retrievalLimit in 1..10) { "assistant_retrieval_limit_invalid" }
+        require(minimumSemanticScore in -1.0..1.0) { "assistant_semantic_score_invalid" }
     }
 }
 
@@ -50,6 +55,7 @@ class PetHistoryAssistantService(
     private val transaction: TransactionPort,
     private val clock: ClockPort,
     private val settings: PetHistoryAssistantSettings,
+    private val rateLimiter: RateLimiterService? = null,
 ) : PetHistoryAssistantUseCase {
 
     override fun ask(command: AskPetHistoryQuestionCommand, access: HouseholdAccess): PetHistoryAnswerResult {
@@ -57,6 +63,10 @@ class PetHistoryAssistantService(
         if (!pets.existsForHousehold(command.petId, access.householdId)) throw NotFoundException("Pet não encontrado")
         val question = command.question.trim()
         require(question.isNotEmpty() && question.length <= settings.maxQuestionCharacters) { "assistant_question_invalid" }
+        rateLimiter?.check(
+            RateLimitAction.ASSISTANT_QUESTION,
+            "${access.householdId.value}:${access.actorTutorId.value}",
+        )
         val now = clock.now(access.zoneId).toInstant()
         val intent = catalog.classify(question)
         if (intent != PetHistoryIntent.DOCUMENT_SEARCH) {
@@ -106,10 +116,14 @@ class PetHistoryAssistantService(
     ): PetHistoryAnswerResult {
         val startedAt = System.nanoTime()
         return try {
-            val vector = embeddings.embed(listOf(question)).single()
+            val context = AiInvocationContext(access.householdId, access.actorTutorId)
+            val vector = embeddings.embed(listOf(question), context).single()
             require(vector.size == embeddings.dimension) { "embedding_dimension_invalid" }
             val retrieved = search.search(
-                SemanticSearchRequest(access.householdId, command.petId, question, vector, settings.retrievalLimit),
+                SemanticSearchRequest(
+                    access.householdId, command.petId, question, vector,
+                    settings.retrievalLimit, settings.minimumSemanticScore,
+                ),
             )
             if (retrieved.isEmpty()) {
                 saveInteraction(access, elapsedMillis(startedAt), AiInteractionOutcome.SUCCESS, null, now, null, null)
@@ -123,7 +137,7 @@ class PetHistoryAssistantService(
             val evidence = retrieved.map {
                 GroundingEvidence(it.chunkId, it.sourceId, it.sourceType, it.resourceId, it.title, it.page, it.text.take(800))
             }
-            val generated = generator.answer(question, evidence)
+            val generated = generator.answer(question, evidence, context)
             val allowed = evidence.associateBy { it.chunkId }
             if (!allowed.keys.containsAll(generated.citedChunkIds) || (!generated.insufficientEvidence && generated.citedChunkIds.isEmpty())) {
                 throw IllegalArgumentException("grounded_answer_citations_invalid")
@@ -221,6 +235,8 @@ class PetHistoryAssistantService(
     }
 
     private fun normalizeError(exception: RuntimeException): String = when (exception) {
+        is GroundedAnswerGenerationException -> exception.code
+        is EmbeddingException -> exception.code
         is IllegalArgumentException -> "RAG_INVALID_OUTPUT"
         else -> "RAG_PROVIDER_ERROR"
     }

@@ -135,6 +135,7 @@ class UseCaseWiring {
         ragEnabled = environment.getProperty("app.ai.rag-enabled", Boolean::class.java, false),
         maxQuestionCharacters = environment.getProperty("app.ai.max-question-characters", Int::class.java, 1_000),
         retrievalLimit = environment.getProperty("app.ai.retrieval-limit", Int::class.java, 5),
+        minimumSemanticScore = environment.getProperty("app.ai.minimum-semantic-score", Double::class.java, 0.08),
     )
 
     @Bean
@@ -166,7 +167,10 @@ class UseCaseWiring {
         transaction: TransactionPort,
         clock: ClockPort,
         settings: PetHistoryAssistantSettings,
-    ) = PetHistoryAssistantService(catalog, pets, embeddings, search, generator, answers, interactions, transaction, clock, settings)
+        rateLimiter: RateLimiterService,
+    ) = PetHistoryAssistantService(
+        catalog, pets, embeddings, search, generator, answers, interactions, transaction, clock, settings, rateLimiter,
+    )
 
     @Bean
     fun knowledgeIndexingService(
@@ -200,7 +204,8 @@ class UseCaseWiring {
         transaction: TransactionPort,
         clock: ClockPort,
         settings: CareDraftSettings,
-    ) = CareDraftAppService(drafts, interactions, extractor, carePlans, pets, members, transaction, clock, settings)
+        rateLimiter: RateLimiterService,
+    ) = CareDraftAppService(drafts, interactions, extractor, carePlans, pets, members, transaction, clock, settings, rateLimiter)
 
     @Bean
     fun financeAppService(
@@ -317,10 +322,12 @@ class UseCaseWiring {
         transaction: TransactionPort,
         knowledgeSources: KnowledgeSourceRepositoryPort,
         knowledgeOutbox: KnowledgeIndexOutboxPort,
+        embeddings: EmbeddingPort,
     ) = MediaAppService(
         media, storage, pets, tutors, healthRecords, healthAttachments, transaction,
         knowledgeSources = knowledgeSources,
         knowledgeOutbox = knowledgeOutbox,
+        embeddingSignature = embeddings.signature,
     )
 
     @Bean
@@ -335,7 +342,11 @@ class UseCaseWiring {
         activities: HouseholdActivityRepositoryPort,
         knowledgeSources: KnowledgeSourceRepositoryPort,
         knowledgeOutbox: KnowledgeIndexOutboxPort,
-    ) = HealthAppService(records, measurements, attachments, media, pets, transaction, clock, activities, knowledgeSources, knowledgeOutbox)
+        embeddings: EmbeddingPort,
+    ) = HealthAppService(
+        records, measurements, attachments, media, pets, transaction, clock, activities,
+        knowledgeSources, knowledgeOutbox, embeddings.signature,
+    )
 
     @Bean
     fun reminderRelayService(

@@ -8,7 +8,7 @@ CREATE TABLE knowledge_chunk (
     chunk_index INTEGER NOT NULL,
     normalized_text TEXT NOT NULL,
     search_vector TSVECTOR GENERATED ALWAYS AS (to_tsvector('portuguese', normalized_text)) STORED,
-    embedding public.VECTOR(64) NOT NULL,
+    embedding public.VECTOR(512) NOT NULL,
     page INTEGER,
     start_offset INTEGER NOT NULL,
     end_offset INTEGER NOT NULL,

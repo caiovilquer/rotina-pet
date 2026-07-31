@@ -99,6 +99,37 @@ class KnowledgePersistenceAdapter(
         SOURCE_MAPPER,
     )
 
+    override fun findConfigurationMismatches(
+        embeddingModel: String,
+        chunkerVersion: String,
+        healthRecordExtractorVersion: String,
+        healthAttachmentExtractorVersion: String,
+        limit: Int,
+    ): List<KnowledgeSource> = named.query(
+        """
+        SELECT * FROM knowledge_source
+        WHERE status <> 'DELETED' AND (
+            embedding_model <> :embeddingModel OR
+            chunker_version <> :chunkerVersion OR
+            extractor_version <> CASE type
+                WHEN 'HEALTH_RECORD' THEN :healthRecordExtractorVersion
+                WHEN 'HEALTH_ATTACHMENT' THEN :healthAttachmentExtractorVersion
+                ELSE extractor_version
+            END
+        )
+        ORDER BY updated_at, id
+        LIMIT :limit
+        """.trimIndent(),
+        mapOf(
+            "embeddingModel" to embeddingModel,
+            "chunkerVersion" to chunkerVersion,
+            "healthRecordExtractorVersion" to healthRecordExtractorVersion,
+            "healthAttachmentExtractorVersion" to healthAttachmentExtractorVersion,
+            "limit" to limit,
+        ),
+        SOURCE_MAPPER,
+    )
+
     override fun markIndexing(id: UUID, at: Instant) {
         jdbc.update("UPDATE knowledge_source SET status = 'INDEXING', error_code = NULL, updated_at = ? WHERE id = ? AND status <> 'DELETED'", Timestamp.from(at), id)
     }
@@ -135,9 +166,11 @@ class KnowledgePersistenceAdapter(
         }.toTypedArray())
         val changed = jdbc.update(
             """
-            UPDATE knowledge_source SET status = 'READY', error_code = NULL, updated_at = ?
+            UPDATE knowledge_source SET status = 'READY', extractor_version = ?, chunker_version = ?,
+                embedding_model = ?, error_code = NULL, updated_at = ?
             WHERE id = ? AND checksum = ? AND status <> 'DELETED'
             """.trimIndent(),
+            source.extractorVersion, source.chunkerVersion, source.embeddingModel,
             Timestamp.from(at), source.id, source.checksum,
         )
         require(changed == 1) { "knowledge_source_changed_during_indexing" }
@@ -266,7 +299,7 @@ class KnowledgePersistenceAdapter(
         SELECT e.id, e.source_id, e.type, e.resource_id, e.title, e.normalized_text, e.page,
                f.lexical_score, f.semantic_score, f.combined_score
         FROM fused f JOIN eligible e ON e.id = f.id
-        WHERE f.lexical_score > 0 OR f.semantic_score >= 0.08
+        WHERE f.lexical_score > 0 OR f.semantic_score >= :minimumSemanticScore
         ORDER BY f.combined_score DESC, f.semantic_score DESC, e.id
         LIMIT :limit
         """.trimIndent(),
@@ -276,6 +309,7 @@ class KnowledgePersistenceAdapter(
             "query" to request.query,
             "embedding" to vectorLiteral(request.embedding),
             "limit" to request.limit,
+            "minimumSemanticScore" to request.minimumSemanticScore,
         ),
     ) { rs, _ ->
         RetrievedKnowledge(

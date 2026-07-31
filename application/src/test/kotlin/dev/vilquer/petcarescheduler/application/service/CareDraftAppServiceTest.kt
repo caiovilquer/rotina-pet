@@ -6,11 +6,13 @@ import dev.vilquer.petcarescheduler.application.FakeTransactionPort
 import dev.vilquer.petcarescheduler.application.InMemoryPetRepo
 import dev.vilquer.petcarescheduler.application.TEST_HOUSEHOLD_ID
 import dev.vilquer.petcarescheduler.application.exception.ForbiddenException
+import dev.vilquer.petcarescheduler.application.exception.RateLimitException
 import dev.vilquer.petcarescheduler.core.domain.assistant.AiInteraction
 import dev.vilquer.petcarescheduler.core.domain.assistant.AssistantFeedback
 import dev.vilquer.petcarescheduler.core.domain.assistant.CareDraft
 import dev.vilquer.petcarescheduler.core.domain.assistant.CareDraftAction
 import dev.vilquer.petcarescheduler.core.domain.assistant.CareDraftId
+import dev.vilquer.petcarescheduler.core.domain.assistant.CareDraftChannel
 import dev.vilquer.petcarescheduler.core.domain.entity.Pet
 import dev.vilquer.petcarescheduler.core.domain.entity.PetId
 import dev.vilquer.petcarescheduler.core.domain.entity.TutorId
@@ -26,6 +28,7 @@ import dev.vilquer.petcarescheduler.usecase.contract.drivenports.CareInstruction
 import dev.vilquer.petcarescheduler.usecase.contract.drivenports.CareInstructionExtractionRequest
 import dev.vilquer.petcarescheduler.usecase.contract.drivenports.CareInstructionExtractorPort
 import dev.vilquer.petcarescheduler.usecase.contract.drivenports.ExtractedCareDraft
+import dev.vilquer.petcarescheduler.usecase.contract.drivenports.RateLimitStorePort
 import dev.vilquer.petcarescheduler.usecase.contract.drivingports.CarePlanUseCase
 import dev.vilquer.petcarescheduler.usecase.result.CarePlanResult
 import dev.vilquer.petcarescheduler.usecase.result.CarePlansPageResult
@@ -89,10 +92,40 @@ class CareDraftAppServiceTest {
         assertEquals(1, drafts.countByHousehold(TEST_HOUSEHOLD_ID))
     }
 
+    @Test
+    fun `pilot draft limit is shared by rest and whatsapp use case calls`() {
+        val extractor = FailingExtractor()
+        val limiter = RateLimiterService(
+            RateLimitProperties(), CountingRateLimitStore(),
+            java.time.Clock.fixed(now.toInstant(), ZoneId.of("UTC")),
+        )
+        val service = service(InMemoryDraftRepo(), InMemoryInteractionRepo(), extractor, limiter)
+        repeat(10) { index ->
+            service.generate(
+                GenerateCareDraftCommand(
+                    "Vacina da Luna amanhã às 08:00", UUID.randomUUID(),
+                    channel = if (index % 2 == 0) CareDraftChannel.WEB else CareDraftChannel.WHATSAPP,
+                ),
+                ownerAccess,
+            )
+        }
+
+        val error = assertThrows(RateLimitException::class.java) {
+            service.generate(
+                GenerateCareDraftCommand("Vacina da Luna amanhã às 08:00", UUID.randomUUID()),
+                ownerAccess,
+            )
+        }
+
+        assertEquals("AI_RATE_LIMITED", error.publicCode)
+        assertEquals(10, extractor.calls)
+    }
+
     private fun service(
         drafts: CareDraftRepositoryPort,
         interactions: AiInteractionRepositoryPort,
         extractor: CareInstructionExtractorPort,
+        rateLimiter: RateLimiterService? = null,
     ) = CareDraftAppService(
         drafts = drafts,
         interactions = interactions,
@@ -105,7 +138,16 @@ class CareDraftAppServiceTest {
         transaction = FakeTransactionPort(),
         clock = FakeClock(now),
         settings = CareDraftSettings(true, Duration.ofHours(24), 4_000),
+        rateLimiter = rateLimiter,
     )
+
+    private class CountingRateLimitStore : RateLimitStorePort {
+        private val counts = mutableMapOf<String, Int>()
+        override fun registerAttempt(key: String, now: Instant, window: Duration) =
+            counts.compute(key) { _, current -> (current ?: 0) + 1 }!!
+        override fun delete(key: String) { counts.remove(key) }
+        override fun deleteOlderThan(cutoff: Instant) = 0
+    }
 
     private class FailingExtractor : CareInstructionExtractorPort {
         override val provider = "fake"

@@ -11,12 +11,12 @@ import java.time.Instant
 import java.util.UUID
 
 object KnowledgeSourceFactory {
-    const val EMBEDDING_MODEL = "local-hash-embedding-v1"
+    const val FAKE_EMBEDDING_SIGNATURE = "fake/local-hash-embedding-v2/512"
     const val CHUNKER_VERSION = "semantic-chunker-v1"
     const val RECORD_EXTRACTOR_VERSION = "health-record-v1"
     const val DOCUMENT_EXTRACTOR_VERSION = "pdfbox-v1"
 
-    fun healthRecord(record: HealthRecord, at: Instant) = KnowledgeSource(
+    fun healthRecord(record: HealthRecord, at: Instant, embeddingSignature: String = FAKE_EMBEDDING_SIGNATURE) = KnowledgeSource(
         id = stableId(record.householdId.value, KnowledgeSourceType.HEALTH_RECORD, record.id.value),
         householdId = record.householdId,
         petId = record.petId,
@@ -33,12 +33,12 @@ object KnowledgeSourceFactory {
         status = KnowledgeSourceStatus.PENDING,
         extractorVersion = RECORD_EXTRACTOR_VERSION,
         chunkerVersion = CHUNKER_VERSION,
-        embeddingModel = EMBEDDING_MODEL,
+        embeddingModel = embeddingSignature,
         createdAt = at,
         updatedAt = at,
     )
 
-    fun healthAttachment(asset: MediaAsset, at: Instant) = KnowledgeSource(
+    fun healthAttachment(asset: MediaAsset, at: Instant, embeddingSignature: String = FAKE_EMBEDDING_SIGNATURE) = KnowledgeSource(
         id = stableId(requireNotNull(asset.householdId).value, KnowledgeSourceType.HEALTH_ATTACHMENT, asset.id),
         householdId = requireNotNull(asset.householdId),
         petId = requireNotNull(asset.petId),
@@ -50,7 +50,7 @@ object KnowledgeSourceFactory {
         status = KnowledgeSourceStatus.PENDING,
         extractorVersion = DOCUMENT_EXTRACTOR_VERSION,
         chunkerVersion = CHUNKER_VERSION,
-        embeddingModel = EMBEDDING_MODEL,
+        embeddingModel = embeddingSignature,
         createdAt = at,
         updatedAt = at,
     )

@@ -30,6 +30,7 @@ import dev.vilquer.petcarescheduler.usecase.command.CorrectCareDraftCommand
 import dev.vilquer.petcarescheduler.usecase.command.CreateCarePlanCommand
 import dev.vilquer.petcarescheduler.usecase.command.GenerateCareDraftCommand
 import dev.vilquer.petcarescheduler.usecase.contract.drivenports.AiInteractionRepositoryPort
+import dev.vilquer.petcarescheduler.usecase.contract.drivenports.AiInvocationContext
 import dev.vilquer.petcarescheduler.usecase.contract.drivenports.CareDraftRepositoryPort
 import dev.vilquer.petcarescheduler.usecase.contract.drivenports.CareInstructionExtractionException
 import dev.vilquer.petcarescheduler.usecase.contract.drivenports.CareInstructionExtractionRequest
@@ -74,6 +75,7 @@ class CareDraftAppService(
     private val transaction: TransactionPort,
     private val clock: ClockPort,
     private val settings: CareDraftSettings,
+    private val rateLimiter: RateLimiterService? = null,
 ) : CareDraftUseCase {
 
     override fun generate(command: GenerateCareDraftCommand, access: HouseholdAccess): CareDraftResult {
@@ -90,8 +92,15 @@ class CareDraftAppService(
             transaction.execute {
                 interactions.save(interaction(null, access, 0, AiInteractionOutcome.DISABLED, "AI_DISABLED", now))
             }
-            throw UpstreamServiceException("O assistente está temporariamente desativado; use o formulário manual")
+            throw UpstreamServiceException(
+                "O assistente está temporariamente desativado; use o formulário manual",
+                "AI_PROVIDER_UNAVAILABLE",
+            )
         }
+        rateLimiter?.check(
+            RateLimitAction.ASSISTANT_DRAFT,
+            "${access.householdId.value}:${access.actorTutorId.value}",
+        )
 
         val initialFields = CareDraftFields(
             zoneId = access.zoneId,
@@ -128,6 +137,7 @@ class CareDraftAppService(
             zoneId = access.zoneId,
             pets = pets.listByHousehold(access.householdId, 0, MAX_PETS_IN_CONTEXT)
                 .mapNotNull { pet -> pet.id?.let { CareInstructionPetContext(it, pet.name) } },
+            context = AiInvocationContext(access.householdId, access.actorTutorId),
         )
         val startedAt = System.nanoTime()
         val extraction = try {
@@ -290,8 +300,8 @@ class CareDraftAppService(
     ): CareDraftResult {
         val at = clock.now(access.zoneId).toInstant()
         val extractionException = exception as? CareInstructionExtractionException
-        val code = extractionException?.code ?: "AI_INVALID_OUTPUT"
-        val outcome = if (extractionException == null) AiInteractionOutcome.INVALID_OUTPUT else AiInteractionOutcome.PROVIDER_ERROR
+        val code = extractionException?.code ?: "AI_OUTPUT_INVALID"
+        val outcome = if (code == "AI_OUTPUT_INVALID") AiInteractionOutcome.INVALID_OUTPUT else AiInteractionOutcome.PROVIDER_ERROR
         return transaction.execute {
             val current = lock(id, access)
             val failed = drafts.save(

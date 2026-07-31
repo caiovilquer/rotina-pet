@@ -12,7 +12,6 @@ import dev.vilquer.petcarescheduler.usecase.contract.drivenports.CareInstruction
 import dev.vilquer.petcarescheduler.usecase.contract.drivenports.ExtractedCareDraft
 import io.micrometer.core.instrument.MeterRegistry
 import io.micrometer.core.instrument.Timer
-import org.springframework.stereotype.Component
 import java.text.Normalizer
 import java.time.Duration
 import java.time.Instant
@@ -27,7 +26,6 @@ import java.util.Locale
  * contrato estreito de um provider remoto, sem rede, credenciais ou escrita no
  * domínio. A extração deliberadamente se abstém quando o texto é ambíguo.
  */
-@Component
 class FakeCareInstructionExtractorAdapter(
     private val meterRegistry: MeterRegistry,
 ) : CareInstructionExtractorPort {

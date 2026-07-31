@@ -2,9 +2,6 @@ package dev.vilquer.petcarescheduler.application.adapter.input.rest
 
 import dev.vilquer.petcarescheduler.application.adapter.input.security.CurrentHousehold
 import dev.vilquer.petcarescheduler.application.adapter.input.security.CurrentJwt
-import dev.vilquer.petcarescheduler.application.adapter.input.security.tutorId
-import dev.vilquer.petcarescheduler.application.service.RateLimitAction
-import dev.vilquer.petcarescheduler.application.service.RateLimiterService
 import dev.vilquer.petcarescheduler.core.domain.entity.PetId
 import dev.vilquer.petcarescheduler.usecase.command.AddAssistantAnswerFeedbackCommand
 import dev.vilquer.petcarescheduler.usecase.command.AskPetHistoryQuestionCommand
@@ -13,7 +10,6 @@ import dev.vilquer.petcarescheduler.usecase.contract.drivingports.KnowledgeIndex
 import dev.vilquer.petcarescheduler.usecase.contract.drivingports.PetHistoryAssistantUseCase
 import dev.vilquer.petcarescheduler.usecase.result.KnowledgeSourceResult
 import dev.vilquer.petcarescheduler.usecase.result.PetHistoryAnswerResult
-import jakarta.servlet.http.HttpServletRequest
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Positive
@@ -49,19 +45,13 @@ class PetHistoryAssistantController(
     private val assistant: PetHistoryAssistantUseCase,
     private val knowledge: KnowledgeIndexUseCase,
     private val household: CurrentHousehold,
-    private val rateLimiter: RateLimiterService,
 ) {
     @PostMapping("/questions")
     fun ask(
         @Valid @RequestBody body: AskPetHistoryQuestionRequest,
         @AuthenticationPrincipal jwt: CurrentJwt,
-        request: HttpServletRequest,
     ): PetHistoryAnswerResult {
         val access = household.resolve(jwt)
-        rateLimiter.check(
-            RateLimitAction.ASSISTANT_QUESTION,
-            "${request.remoteAddr ?: "unknown"}:${jwt.tutorId()}:${access.householdId.value}",
-        )
         return assistant.ask(AskPetHistoryQuestionCommand(PetId(body.petId), body.question), access)
     }
 

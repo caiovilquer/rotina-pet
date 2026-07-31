@@ -1,14 +1,13 @@
 package dev.vilquer.petcarescheduler.infra.adapter.output.ai
 
 import dev.vilquer.petcarescheduler.usecase.contract.drivenports.GeneratedGroundedAnswer
+import dev.vilquer.petcarescheduler.usecase.contract.drivenports.AiInvocationContext
 import dev.vilquer.petcarescheduler.usecase.contract.drivenports.GroundedAnswerGeneratorPort
 import dev.vilquer.petcarescheduler.usecase.contract.drivenports.GroundingEvidence
 import io.micrometer.core.instrument.MeterRegistry
 import io.micrometer.core.instrument.Timer
-import org.springframework.stereotype.Component
 import java.text.Normalizer
 
-@Component
 class FakeGroundedAnswerGeneratorAdapter(
     private val meterRegistry: MeterRegistry,
 ) : GroundedAnswerGeneratorPort {
@@ -16,7 +15,7 @@ class FakeGroundedAnswerGeneratorAdapter(
     override val model = "grounded-extractive-v1"
     override val promptVersion = "grounded-answer-v1"
 
-    override fun answer(question: String, evidence: List<GroundingEvidence>): GeneratedGroundedAnswer {
+    override fun answer(question: String, evidence: List<GroundingEvidence>, context: AiInvocationContext): GeneratedGroundedAnswer {
         val sample = Timer.start(meterRegistry)
         return try {
             val questionTerms = terms(question)

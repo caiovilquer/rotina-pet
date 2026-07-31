@@ -55,6 +55,7 @@ class HealthAppService(
     },
     private val knowledgeSources: KnowledgeSourceRepositoryPort? = null,
     private val knowledgeOutbox: KnowledgeIndexOutboxPort? = null,
+    private val embeddingSignature: String = KnowledgeSourceFactory.FAKE_EMBEDDING_SIGNATURE,
 ) : HealthRecordUseCase, HealthMeasurementUseCase {
 
     fun create(command: CreateHealthRecordCommand, tutorId: TutorId): HealthRecordResult {
@@ -283,7 +284,7 @@ class HealthAppService(
     private fun prepareKnowledge(record: HealthRecord, at: Instant) {
         val sourceRepository = knowledgeSources ?: return
         val outboxRepository = knowledgeOutbox ?: return
-        val prepared = sourceRepository.prepare(KnowledgeSourceFactory.healthRecord(record, at))
+        val prepared = sourceRepository.prepare(KnowledgeSourceFactory.healthRecord(record, at, embeddingSignature))
         if (prepared.changed) {
             outboxRepository.enqueue(
                 prepared.source.id,

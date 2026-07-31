@@ -17,6 +17,7 @@ import dev.vilquer.petcarescheduler.core.domain.household.HouseholdId
 import dev.vilquer.petcarescheduler.core.domain.household.HouseholdRole
 import dev.vilquer.petcarescheduler.usecase.command.AskPetHistoryQuestionCommand
 import dev.vilquer.petcarescheduler.usecase.contract.drivenports.AiInteractionRepositoryPort
+import dev.vilquer.petcarescheduler.usecase.contract.drivenports.AiInvocationContext
 import dev.vilquer.petcarescheduler.usecase.contract.drivenports.AssistantAnswerAudit
 import dev.vilquer.petcarescheduler.usecase.contract.drivenports.AssistantAnswerFeedback
 import dev.vilquer.petcarescheduler.usecase.contract.drivenports.AssistantAnswerRepositoryPort
@@ -129,9 +130,11 @@ class PetHistoryAssistantServiceTest {
     }
 
     private class TestEmbeddings : EmbeddingPort {
+        override val provider = "test"
         override val model = "test"
-        override val dimension = 64
-        override fun embed(texts: List<String>) = texts.map { FloatArray(64).also { vector -> vector[0] = 1f } }
+        override val dimension = 512
+        override fun embed(texts: List<String>, context: AiInvocationContext?) =
+            texts.map { FloatArray(512).also { vector -> vector[0] = 1f } }
     }
 
     private class RecordingSearch : SemanticSearchPort {
@@ -144,7 +147,7 @@ class PetHistoryAssistantServiceTest {
         override val provider = "test"
         override val model = "test"
         override val promptVersion = "grounded-answer-test"
-        override fun answer(question: String, evidence: List<GroundingEvidence>) = GeneratedGroundedAnswer(
+        override fun answer(question: String, evidence: List<GroundingEvidence>, context: AiInvocationContext) = GeneratedGroundedAnswer(
             "O documento registra hemoglobina dentro da faixa.", setOf(evidence.single().chunkId), false,
         )
     }

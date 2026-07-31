@@ -52,6 +52,30 @@ class KnowledgePersistenceIntegrationTest : AbstractPostgresIntegrationTest() {
     }
 
     @Test
+    fun `embedding chunker or extractor signature mismatch schedules reindex discovery`() {
+        val scope = scope("configuration")
+        val old = source(scope, "Nota antiga", "d".repeat(64))
+        knowledge.prepare(old)
+
+        val mismatches = knowledge.findConfigurationMismatches(
+            "openai/text-embedding-3-small/512", "semantic-chunker-v1", "health-record-v1", "pdfbox-v1", 10,
+        )
+
+        assertEquals(listOf(old.id), mismatches.map { it.id })
+        val current = old.copy(
+            extractorVersion = "health-record-v1",
+            chunkerVersion = "semantic-chunker-v1",
+            embeddingModel = "openai/text-embedding-3-small/512",
+        )
+        knowledge.replaceChunksAndMarkReady(current, listOf(chunk(current, "Nota reindexada", unitVector(0))), Instant.now())
+        assertTrue(
+            knowledge.findConfigurationMismatches(
+                current.embeddingModel, current.chunkerVersion, current.extractorVersion, "pdfbox-v1", 10,
+            ).isEmpty(),
+        )
+    }
+
+    @Test
     fun `outbox claim is idempotent while a job is processing`() {
         val scope = scope("claim")
         val source = source(scope, "Nota", "c".repeat(64))
@@ -91,15 +115,15 @@ class KnowledgePersistenceIntegrationTest : AbstractPostgresIntegrationTest() {
             KnowledgeSourceFactory.stableId(scope.householdId.value, KnowledgeSourceType.HEALTH_RECORD, resourceId),
             scope.householdId, scope.petId, KnowledgeSourceType.HEALTH_RECORD, resourceId, "1", title, checksum,
             status = KnowledgeSourceStatus.PENDING, extractorVersion = "record-v1", chunkerVersion = "chunk-v1",
-            embeddingModel = "test-embedding", createdAt = now, updatedAt = now,
+            embeddingModel = "fake/local-hash-embedding-v2/512", createdAt = now, updatedAt = now,
         )
     }
 
     private fun chunk(source: KnowledgeSource, text: String, vector: FloatArray) = KnowledgeChunk(
         UUID.randomUUID(), source.id, 0, text, vector, null, 0, text.length,
-        KnowledgeSourceFactory.sha256(text), "test-embedding",
+        KnowledgeSourceFactory.sha256(text), source.embeddingModel,
     )
 
-    private fun unitVector(index: Int) = FloatArray(64).also { it[index] = 1f }
+    private fun unitVector(index: Int) = FloatArray(512).also { it[index] = 1f }
     private data class Scope(val householdId: HouseholdId, val petId: PetId)
 }

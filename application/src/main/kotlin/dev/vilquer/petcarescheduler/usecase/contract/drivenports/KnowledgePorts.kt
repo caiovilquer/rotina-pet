@@ -57,6 +57,7 @@ data class SemanticSearchRequest(
     val query: String,
     val embedding: FloatArray,
     val limit: Int,
+    val minimumSemanticScore: Double = 0.08,
 )
 
 data class RetrievedKnowledge(
@@ -78,6 +79,13 @@ interface KnowledgeSourceRepositoryPort {
     fun findByIdAndHousehold(id: UUID, householdId: HouseholdId): KnowledgeSource?
     fun findByResource(householdId: HouseholdId, type: KnowledgeSourceType, resourceId: UUID): KnowledgeSource?
     fun listByPet(householdId: HouseholdId, petId: PetId): List<KnowledgeSource>
+    fun findConfigurationMismatches(
+        embeddingModel: String,
+        chunkerVersion: String,
+        healthRecordExtractorVersion: String,
+        healthAttachmentExtractorVersion: String,
+        limit: Int,
+    ): List<KnowledgeSource> = emptyList()
     fun markIndexing(id: UUID, at: Instant)
     fun markPending(id: UUID, at: Instant)
     fun replaceChunksAndMarkReady(source: KnowledgeSource, chunks: List<KnowledgeChunk>, at: Instant)
@@ -99,10 +107,15 @@ interface SemanticSearchPort {
 }
 
 interface EmbeddingPort {
+    val provider: String
     val model: String
     val dimension: Int
-    fun embed(texts: List<String>): List<FloatArray>
+    val signature: String get() = "$provider/$model/$dimension"
+    fun embed(texts: List<String>, context: AiInvocationContext? = null): List<FloatArray>
 }
+
+class EmbeddingException(val code: String, val retryable: Boolean, cause: Throwable? = null) :
+    RuntimeException(code, cause)
 
 data class ExtractedDocumentPage(val page: Int, val text: String)
 data class ExtractedDocument(val pages: List<ExtractedDocumentPage>, val extractorVersion: String)
@@ -134,8 +147,11 @@ interface GroundedAnswerGeneratorPort {
     val provider: String
     val model: String
     val promptVersion: String
-    fun answer(question: String, evidence: List<GroundingEvidence>): GeneratedGroundedAnswer
+    fun answer(question: String, evidence: List<GroundingEvidence>, context: AiInvocationContext): GeneratedGroundedAnswer
 }
+
+class GroundedAnswerGenerationException(val code: String, val retryable: Boolean, cause: Throwable? = null) :
+    RuntimeException(code, cause)
 
 enum class AssistantAnswerKind { STRUCTURED, RAG, REFUSAL }
 

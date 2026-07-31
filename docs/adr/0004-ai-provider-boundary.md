@@ -18,10 +18,11 @@ proveniência. O módulo `adapter-ai` implementa essa capacidade e não importa
 outros adapters. Prompt e JSON Schema são artefatos versionados; fornecedor e
 modelo aparecem somente em configuração e telemetria.
 
-A primeira implementação é um provider local determinístico para
-desenvolvimento, CI e baseline de avaliação. Integrar um provider remoto exige
-um adapter adicional com timeout, limites, validação estrita do schema e
-avaliação comparativa. O domínio não muda para acomodar seu SDK.
+O provider local determinístico continua sendo o baseline de desenvolvimento e
+CI. Staging também pode selecionar o adapter OpenAI pelo mesmo conjunto de
+ports. A seleção aceita exatamente um provider e falha no startup para valores
+inválidos ou credenciais ausentes com capacidades ativas; uma falha remota
+nunca troca silenciosamente para o fake. O domínio não acomoda classes do SDK.
 
 ## Consequências
 

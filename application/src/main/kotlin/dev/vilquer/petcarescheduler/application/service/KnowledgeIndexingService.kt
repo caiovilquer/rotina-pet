@@ -56,6 +56,7 @@ class KnowledgeIndexingService(
     override fun processBatch() {
         if (!settings.enabled) return
         val now = clock.now().toInstant()
+        scheduleConfigurationReindex(now)
         outbox.claimBatch(settings.batchSize, now).forEach { job ->
             val source = sources.findById(job.sourceId)
             if (source == null || source.status == KnowledgeSourceStatus.DELETED || job.operation == KnowledgeIndexOperation.DELETE) {
@@ -113,7 +114,15 @@ class KnowledgeIndexingService(
         }
         val pieces = sections.flatMap { section -> chunk(section.text).map { piece -> Triple(section.page, piece.first, piece.second) } }
         require(pieces.isNotEmpty()) { "knowledge_source_empty" }
-        val vectors = embeddings.embed(pieces.map { it.third })
+        val effectiveSource = source.copy(
+            embeddingModel = embeddings.signature,
+            chunkerVersion = KnowledgeSourceFactory.CHUNKER_VERSION,
+            extractorVersion = currentExtractorVersion(source),
+        )
+        val vectors = embeddings.embed(
+            pieces.map { it.third },
+            dev.vilquer.petcarescheduler.usecase.contract.drivenports.AiInvocationContext(source.householdId),
+        )
         require(vectors.size == pieces.size && vectors.all { it.size == embeddings.dimension }) { "embedding_output_invalid" }
         val chunks = pieces.mapIndexed { index, (page, offset, text) ->
             KnowledgeChunk(
@@ -126,13 +135,13 @@ class KnowledgeIndexingService(
                 startOffset = offset,
                 endOffset = offset + text.length,
                 contentHash = KnowledgeSourceFactory.sha256(text),
-                embeddingModel = embeddings.model,
+                embeddingModel = embeddings.signature,
             )
         }
         transaction.execute {
             val current = sources.findById(source.id) ?: throw NotFoundException("Fonte não encontrada")
             require(current.checksum == source.checksum) { "knowledge_source_changed_during_indexing" }
-            sources.replaceChunksAndMarkReady(current, chunks, clock.now().toInstant())
+            sources.replaceChunksAndMarkReady(effectiveSource.copy(checksum = current.checksum), chunks, clock.now().toInstant())
         }
     }
 
@@ -162,6 +171,33 @@ class KnowledgeIndexingService(
         val bytes = storage.readObject(asset.objectKey, settings.maxDocumentBytes + 1)
         require(bytes.size.toLong() <= settings.maxDocumentBytes) { "knowledge_document_too_large" }
         return extractor.extract(bytes, asset.contentType).pages.map { Section(it.page, it.text) }
+    }
+
+    private fun scheduleConfigurationReindex(at: Instant) {
+        val stale = sources.findConfigurationMismatches(
+            embeddings.signature,
+            KnowledgeSourceFactory.CHUNKER_VERSION,
+            KnowledgeSourceFactory.RECORD_EXTRACTOR_VERSION,
+            extractor.version,
+            settings.batchSize,
+        )
+        stale.forEach { source ->
+            transaction.execute {
+                sources.markPending(source.id, at)
+                outbox.enqueue(
+                    source.id,
+                    KnowledgeIndexOperation.REINDEX,
+                    "configuration:${source.id}:${currentExtractorVersion(source)}:${KnowledgeSourceFactory.CHUNKER_VERSION}:${embeddings.signature}",
+                    at,
+                )
+            }
+        }
+    }
+
+    private fun currentExtractorVersion(source: KnowledgeSource): String = when (source.type) {
+        KnowledgeSourceType.HEALTH_RECORD -> KnowledgeSourceFactory.RECORD_EXTRACTOR_VERSION
+        KnowledgeSourceType.HEALTH_ATTACHMENT -> extractor.version
+        else -> source.extractorVersion
     }
 
     private fun chunk(text: String): List<Pair<Int, String>> {

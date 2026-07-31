@@ -5,6 +5,9 @@ import com.fasterxml.jackson.module.kotlin.readValue
 import dev.vilquer.petcarescheduler.core.domain.assistant.CareDraftField
 import dev.vilquer.petcarescheduler.core.domain.entity.EventType
 import dev.vilquer.petcarescheduler.core.domain.entity.PetId
+import dev.vilquer.petcarescheduler.core.domain.entity.TutorId
+import dev.vilquer.petcarescheduler.core.domain.household.HouseholdId
+import dev.vilquer.petcarescheduler.usecase.contract.drivenports.AiInvocationContext
 import dev.vilquer.petcarescheduler.usecase.contract.drivenports.CareInstructionExtractionRequest
 import dev.vilquer.petcarescheduler.usecase.contract.drivenports.CareInstructionPetContext
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry
@@ -32,6 +35,7 @@ class FakeCareInstructionExtractorAdapterTest {
                     receivedAt = Instant.parse("2026-07-14T12:00:00Z"),
                     zoneId = ZoneId.of("America/Sao_Paulo"),
                     pets = listOf(CareInstructionPetContext(PetId(1), "Luna")),
+                    context = context,
                 ),
             )
             val actualMissing = result.missingFields.map(CareDraftField::name).toSet()
@@ -53,6 +57,7 @@ class FakeCareInstructionExtractorAdapterTest {
                 Instant.parse("2026-07-14T12:00:00Z"),
                 ZoneId.of("America/Sao_Paulo"),
                 listOf(CareInstructionPetContext(PetId(1), "Luna")),
+                context,
             ),
         )
 
@@ -67,4 +72,11 @@ class FakeCareInstructionExtractorAdapterTest {
         val expectedSchedule: String?,
         val missing: List<String>,
     )
+
+    companion object {
+        private val context = AiInvocationContext(
+            HouseholdId(java.util.UUID.fromString("00000000-0000-0000-0000-000000000001")),
+            TutorId(1),
+        )
+    }
 }

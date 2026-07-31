@@ -46,6 +46,7 @@ class MediaAppService(
     private val clock: Clock = Clock.systemUTC(),
     private val knowledgeSources: KnowledgeSourceRepositoryPort? = null,
     private val knowledgeOutbox: KnowledgeIndexOutboxPort? = null,
+    private val embeddingSignature: String = KnowledgeSourceFactory.FAKE_EMBEDDING_SIGNATURE,
 ) : MediaUploadUseCase, MediaMaintenanceUseCase {
 
     fun initiate(command: InitiateMediaUploadCommand, tutorId: TutorId): MediaUploadInitiatedResult {
@@ -305,7 +306,7 @@ class MediaAppService(
     private fun prepareKnowledge(asset: MediaAsset, at: Instant) {
         val sourceRepository = knowledgeSources ?: return
         val outboxRepository = knowledgeOutbox ?: return
-        val prepared = sourceRepository.prepare(KnowledgeSourceFactory.healthAttachment(asset, at))
+        val prepared = sourceRepository.prepare(KnowledgeSourceFactory.healthAttachment(asset, at, embeddingSignature))
         if (prepared.changed) {
             outboxRepository.enqueue(
                 prepared.source.id,

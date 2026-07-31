@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GroundedAnswerOutput v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["answer", "citedChunkReferences", "insufficientEvidence"],
+  "properties": {
+    "answer": {"type": "string"},
+    "citedChunkReferences": {"type": "array", "items": {"type": "string", "pattern": "^chunk-[1-9][0-9]*$"}},
+    "insufficientEvidence": {"type": "boolean"}
+  }
+}

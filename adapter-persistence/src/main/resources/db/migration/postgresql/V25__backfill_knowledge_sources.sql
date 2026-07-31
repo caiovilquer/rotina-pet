@@ -18,7 +18,7 @@ SELECT
     'PENDING',
     'health-record-v1',
     'semantic-chunker-v1',
-    'local-hash-embedding-v1',
+    'pending',
     NULL,
     r.created_at,
     r.updated_at
@@ -42,7 +42,7 @@ SELECT
     'PENDING',
     'pdfbox-v1',
     'semantic-chunker-v1',
-    'local-hash-embedding-v1',
+    'pending',
     NULL,
     m.created_at,
     COALESCE(m.ready_at, m.created_at)

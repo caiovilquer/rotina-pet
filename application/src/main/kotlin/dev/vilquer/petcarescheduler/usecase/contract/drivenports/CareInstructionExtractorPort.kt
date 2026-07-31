@@ -5,16 +5,28 @@ import dev.vilquer.petcarescheduler.core.domain.assistant.CareDraftFieldProvenan
 import dev.vilquer.petcarescheduler.core.domain.assistant.CareDraftFields
 import dev.vilquer.petcarescheduler.core.domain.assistant.CareDraftWarning
 import dev.vilquer.petcarescheduler.core.domain.entity.PetId
+import dev.vilquer.petcarescheduler.core.domain.entity.TutorId
+import dev.vilquer.petcarescheduler.core.domain.household.HouseholdId
 import java.time.Instant
 import java.time.ZoneId
 
 data class CareInstructionPetContext(val id: PetId, val name: String)
+
+/**
+ * Contexto neutro de provider. Os identificadores ficam dentro do processo e
+ * são transformados em um identificador HMAC antes de qualquer chamada remota.
+ */
+data class AiInvocationContext(
+    val householdId: HouseholdId,
+    val actorTutorId: TutorId? = null,
+)
 
 data class CareInstructionExtractionRequest(
     val instruction: String,
     val receivedAt: Instant,
     val zoneId: ZoneId,
     val pets: List<CareInstructionPetContext>,
+    val context: AiInvocationContext,
 )
 
 data class ExtractedCareDraft(
