@@ -2,8 +2,7 @@ spring:
   profiles:
     active: ${SPRING_PROFILES_ACTIVE:dev}
   flyway:
-    # migrações comuns + variantes por banco ({vendor} -> postgresql | h2)
-    locations: classpath:db/migration/common,classpath:db/migration/{vendor}
+    locations: classpath:db/migration/common,classpath:db/migration/postgresql
 
 management:
   endpoints:
@@ -23,6 +22,48 @@ logging:
     console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%X{correlationId}] %logger{36} - %msg%n"
 
 app:
+  whatsapp:
+    enabled: ${WHATSAPP_ENABLED:false}
+    provider: ${WHATSAPP_PROVIDER:fake}
+    graph-api-version: ${META_GRAPH_API_VERSION:}
+    business-phone-number-id: ${META_PHONE_NUMBER_ID:}
+    business-phone-number: ${META_BUSINESS_PHONE_NUMBER:}
+    system-user-token: ${META_SYSTEM_USER_TOKEN:}
+    app-secret: ${META_APP_SECRET:}
+    webhook-verify-token: ${META_WEBHOOK_VERIFY_TOKEN:}
+    hmac-key-current: ${WHATSAPP_HMAC_KEY_CURRENT:}
+    hmac-key-previous: ${WHATSAPP_HMAC_KEY_PREVIOUS:}
+    encryption-key-current: ${WHATSAPP_ENCRYPTION_KEY_CURRENT:}
+    encryption-key-previous: ${WHATSAPP_ENCRYPTION_KEY_PREVIOUS:}
+    key-version-current: ${WHATSAPP_KEY_VERSION_CURRENT:1}
+    key-version-previous: ${WHATSAPP_KEY_VERSION_PREVIOUS:}
+    link-ttl: ${WHATSAPP_LINK_TTL:PT10M}
+    conversation-ttl: ${WHATSAPP_CONVERSATION_TTL:PT24H}
+    inbox-batch-size: ${WHATSAPP_INBOX_BATCH_SIZE:20}
+    outbox-batch-size: ${WHATSAPP_OUTBOX_BATCH_SIZE:20}
+    max-attempts: ${WHATSAPP_MAX_ATTEMPTS:5}
+  ai:
+    provider: ${AI_PROVIDER:fake}
+    enabled: ${AI_ENABLED:false}
+    rag-enabled: ${AI_RAG_ENABLED:false}
+    care-draft-model: ${AI_CARE_DRAFT_MODEL:gpt-5.6-luna}
+    grounded-answer-model: ${AI_GROUNDED_ANSWER_MODEL:gpt-5.6-luna}
+    embedding-model: ${AI_EMBEDDING_MODEL:text-embedding-3-small}
+    embedding-dimensions: ${AI_EMBEDDING_DIMENSIONS:512}
+    embedding-batch-size: ${AI_EMBEDDING_BATCH_SIZE:64}
+    openai-reasoning-effort: ${AI_OPENAI_REASONING_EFFORT:low}
+    openai-timeout: ${AI_OPENAI_TIMEOUT:PT20S}
+    openai-max-retries: ${AI_OPENAI_MAX_RETRIES:2}
+    safety-identifier-key: ${AI_SAFETY_IDENTIFIER_KEY:}
+    openai-api-key: ${OPENAI_API_KEY:}
+    openai-base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
+    draft-ttl: ${AI_DRAFT_TTL:PT24H}
+    max-input-characters: ${AI_MAX_INPUT_CHARACTERS:4000}
+    max-question-characters: ${AI_MAX_QUESTION_CHARACTERS:1000}
+    retrieval-limit: ${AI_RETRIEVAL_LIMIT:5}
+    minimum-semantic-score: ${AI_RAG_MIN_SEMANTIC_SCORE:0.08}
+    index-batch-size: ${AI_INDEX_BATCH_SIZE:10}
+    index-max-attempts: ${AI_INDEX_MAX_ATTEMPTS:5}
   storage:
     enabled: ${OBJECT_STORAGE_ENABLED:false}
     endpoint: ${OBJECT_STORAGE_ENDPOINT:${ENDPOINT:${BUCKET_ENDPOINT:${AWS_ENDPOINT_URL:}}}}

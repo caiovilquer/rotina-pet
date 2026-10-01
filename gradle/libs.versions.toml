@@ -9,6 +9,7 @@ konsist = "0.17.3"
 junitJupiter = "5.11.3"
 mockitoKotlin = "5.3.1"
 awsSdk = "2.47.5"
+openAiJava = "4.45.0"
 
 [libraries]
 jjwt-api = { module = "io.jsonwebtoken:jjwt-api", version.ref = "jjwt" }
@@ -24,6 +25,7 @@ mockito-kotlin = { module = "org.mockito.kotlin:mockito-kotlin", version.ref = "
 httpclient5 = { module = "org.apache.httpcomponents.client5:httpclient5" }
 aws-s3 = { module = "software.amazon.awssdk:s3", version.ref = "awsSdk" }
 aws-url-connection-client = { module = "software.amazon.awssdk:url-connection-client", version.ref = "awsSdk" }
+openai-java = { module = "com.openai:openai-java", version.ref = "openAiJava" }
 
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }

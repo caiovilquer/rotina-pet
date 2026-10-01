@@ -3,6 +3,7 @@ package dev.vilquer.petcarescheduler.infra
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
 import org.testcontainers.containers.PostgreSQLContainer
+import org.testcontainers.utility.DockerImageName
 
 /**
  * Container Postgres único por JVM de teste (padrão "singleton container" do
@@ -15,7 +16,10 @@ abstract class AbstractPostgresIntegrationTest {
     companion object {
         @JvmStatic
         val postgres: PostgreSQLContainer<*> =
-            PostgreSQLContainer("postgres:16-alpine").apply { start() }
+            PostgreSQLContainer(
+                DockerImageName.parse("pgvector/pgvector:0.8.2-pg16-bookworm")
+                    .asCompatibleSubstituteFor("postgres"),
+            ).apply { start() }
 
         @JvmStatic
         @DynamicPropertySource

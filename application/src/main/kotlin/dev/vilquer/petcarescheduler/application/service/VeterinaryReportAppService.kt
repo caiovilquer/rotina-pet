@@ -121,10 +121,10 @@ class VeterinaryReportAppService(
         val measurementItems = measurements.listByHousehold(householdId, query.petId, null, fromInstant, toInstant, MAX_MEASUREMENTS)
         val careItems = occurrences.searchByHousehold(
             householdId,
-            CareOccurrenceFilter(query.from.atStartOfDay(), query.to.plusDays(1).atStartOfDay(), query.petId),
+            CareOccurrenceFilter(fromInstant, toInstant, query.petId),
             0, MAX_OCCURRENCES,
         )
-        val now = clock.now(zone).toLocalDateTime()
+        val now = clock.now(zone).toInstant()
         val completed = careItems.count { it.status == CareOccurrenceStatus.COMPLETED }
         val overdue = careItems.count { it.status == CareOccurrenceStatus.SCHEDULED && it.dueAt.isBefore(now) }
         val upcoming = careItems.count { it.status == CareOccurrenceStatus.SCHEDULED && !it.dueAt.isBefore(now) }

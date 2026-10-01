@@ -1,5 +1,5 @@
 -- Ciclo 4: família explícita como fronteira de autorização. UUIDs de backfill
--- são determinísticos e compatíveis com H2/PostgreSQL.
+-- são determinísticos e preservam compatibilidade com os registros existentes.
 CREATE TABLE household (
     id UUID PRIMARY KEY,
     version BIGINT NOT NULL DEFAULT 0,

@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://rotinapet.local/schemas/care-draft-v1.schema.json",
+  "title": "ExtractedCareDraftV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["intent", "fields", "missingFields", "ambiguities", "warnings", "evidenceByField", "provenanceByField"],
+  "properties": {
+    "intent": { "const": "CREATE_CARE_DRAFT" },
+    "fields": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "petReference": { "type": ["string", "null"], "maxLength": 120 },
+        "type": { "type": ["string", "null"], "enum": ["VACCINE", "MEDICINE", "DIARY", "BREED", "SERVICE", null] },
+        "title": { "type": ["string", "null"], "maxLength": 120 },
+        "instructionsExplicit": { "type": ["string", "null"], "maxLength": 2000 },
+        "startDate": { "type": ["string", "null"], "format": "date" },
+        "startTime": { "type": ["string", "null"], "pattern": "^[0-2][0-9]:[0-5][0-9]$" },
+        "timezone": { "type": ["string", "null"], "maxLength": 80 },
+        "scheduleKind": { "type": ["string", "null"], "enum": ["ONE_TIME", "CALENDAR_INTERVAL", "FIXED_INTERVAL", "DAILY_TIMES", null] },
+        "intervalUnit": { "type": ["string", "null"], "enum": ["DAY", "WEEK", "MONTH", "YEAR", "HOUR", null] },
+        "intervalCount": { "type": ["integer", "null"], "minimum": 1 },
+        "timesOfDay": { "type": "array", "maxItems": 24, "uniqueItems": true, "items": { "type": "string" } },
+        "repetitions": { "type": ["integer", "null"], "minimum": 1 },
+        "endDate": { "type": ["string", "null"], "format": "date" },
+        "reminderMinutesBefore": { "type": ["integer", "null"], "minimum": 0, "maximum": 10080 },
+        "responsiblePersonReference": { "type": ["string", "null"], "maxLength": 160 },
+        "criticalExplicitlyRequested": { "type": "boolean" }
+      }
+    },
+    "missingFields": { "type": "array", "uniqueItems": true, "items": { "type": "string" } },
+    "ambiguities": { "type": "array", "items": { "type": "string", "maxLength": 500 } },
+    "warnings": { "type": "array", "items": { "type": "string", "maxLength": 500 } },
+    "evidenceByField": { "type": "object", "additionalProperties": { "type": "string", "maxLength": 500 } },
+    "provenanceByField": { "type": "object", "additionalProperties": { "enum": ["EXPLICIT", "NORMALIZED", "SYSTEM_DEFAULT", "NEEDS_REVIEW", "MISSING"] } }
+  }
+}

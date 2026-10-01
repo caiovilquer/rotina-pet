@@ -20,7 +20,7 @@ import org.springframework.test.context.ActiveProfiles
     ],
 )
 @ActiveProfiles("dev")
-class DevDataSeederTest {
+class DevDataSeederTest : AbstractPostgresIntegrationTest() {
 
     @Autowired
     lateinit var tutors: TutorRepositoryPort

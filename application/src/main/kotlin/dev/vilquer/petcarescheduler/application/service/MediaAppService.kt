@@ -20,6 +20,10 @@ import dev.vilquer.petcarescheduler.usecase.contract.drivenports.ObjectStoragePo
 import dev.vilquer.petcarescheduler.usecase.contract.drivenports.PetRepositoryPort
 import dev.vilquer.petcarescheduler.usecase.contract.drivenports.TransactionPort
 import dev.vilquer.petcarescheduler.usecase.contract.drivenports.TutorRepositoryPort
+import dev.vilquer.petcarescheduler.usecase.contract.drivenports.KnowledgeIndexOperation
+import dev.vilquer.petcarescheduler.usecase.contract.drivenports.KnowledgeIndexOutboxPort
+import dev.vilquer.petcarescheduler.usecase.contract.drivenports.KnowledgeSourceRepositoryPort
+import dev.vilquer.petcarescheduler.usecase.contract.drivenports.KnowledgeSourceType
 import dev.vilquer.petcarescheduler.usecase.contract.drivingports.MediaMaintenanceUseCase
 import dev.vilquer.petcarescheduler.usecase.contract.drivingports.MediaUploadUseCase
 import dev.vilquer.petcarescheduler.usecase.result.MediaAssetResult
@@ -40,6 +44,9 @@ class MediaAppService(
     private val healthAttachments: HealthRecordAttachmentRepositoryPort,
     private val transaction: TransactionPort,
     private val clock: Clock = Clock.systemUTC(),
+    private val knowledgeSources: KnowledgeSourceRepositoryPort? = null,
+    private val knowledgeOutbox: KnowledgeIndexOutboxPort? = null,
+    private val embeddingSignature: String = KnowledgeSourceFactory.FAKE_EMBEDDING_SIGNATURE,
 ) : MediaUploadUseCase, MediaMaintenanceUseCase {
 
     fun initiate(command: InitiateMediaUploadCommand, tutorId: TutorId): MediaUploadInitiatedResult {
@@ -158,7 +165,10 @@ class MediaAppService(
                     ),
                 )
         }
-        media.save(asset.copy(status = MediaStatus.READY, readyAt = now))
+        val ready = media.save(asset.copy(status = MediaStatus.READY, readyAt = now))
+        if (ready.purpose == MediaPurpose.HEALTH_ATTACHMENT && ready.contentType == "application/pdf") {
+            prepareKnowledge(ready, now)
+        }
         MediaAssetResult(asset.id, contentPath(asset.id, asset.purpose))
     }
 
@@ -187,6 +197,7 @@ class MediaAppService(
                     ?.let { tutors.save(it.copy(avatarAssetId = null)) }
                 MediaPurpose.HEALTH_ATTACHMENT -> healthAttachments.deleteByMediaId(asset.id)
             }
+            if (asset.purpose == MediaPurpose.HEALTH_ATTACHMENT) deleteKnowledge(asset, Instant.now(clock))
             media.save(asset.copy(status = MediaStatus.PENDING_DELETE))
         }
     }
@@ -290,6 +301,29 @@ class MediaAppService(
         "/api/v1/health-attachments/$id/download-url"
     } else {
         "/api/v1/media/$id/content"
+    }
+
+    private fun prepareKnowledge(asset: MediaAsset, at: Instant) {
+        val sourceRepository = knowledgeSources ?: return
+        val outboxRepository = knowledgeOutbox ?: return
+        val prepared = sourceRepository.prepare(KnowledgeSourceFactory.healthAttachment(asset, at, embeddingSignature))
+        if (prepared.changed) {
+            outboxRepository.enqueue(
+                prepared.source.id,
+                KnowledgeIndexOperation.UPSERT,
+                "upsert:${prepared.source.id}:${prepared.source.checksum}",
+                at,
+            )
+        }
+    }
+
+    private fun deleteKnowledge(asset: MediaAsset, at: Instant) {
+        val householdId = asset.householdId ?: return
+        val sourceRepository = knowledgeSources ?: return
+        val outboxRepository = knowledgeOutbox ?: return
+        sourceRepository.markDeleted(householdId, KnowledgeSourceType.HEALTH_ATTACHMENT, asset.id, at)?.let { source ->
+            outboxRepository.enqueue(source.id, KnowledgeIndexOperation.DELETE, "delete:${source.id}:${source.updatedAt}", at)
+        }
     }
 
     companion object {

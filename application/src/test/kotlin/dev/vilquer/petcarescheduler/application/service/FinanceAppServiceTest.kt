@@ -27,8 +27,8 @@ class FinanceAppServiceTest {
         val petRepo = InMemoryPetRepo(mapOf(petId to Pet(petId, 0, "Nina", "Gato", null, null, tutorId = owner, householdId = TEST_HOUSEHOLD_ID)))
         val occurrence = CareOccurrence(
             CareOccurrenceId(java.util.UUID.randomUUID()), planId = CarePlanId(java.util.UUID.randomUUID()), scheduleRevision = 0,
-            householdId = TEST_HOUSEHOLD_ID, tutorId = owner, petId = petId, responsibleTutorId = owner, sequence = 0,
-            type = EventType.SERVICE, title = "Banho", dueAt = LocalDateTime.of(2026, 7, 20, 10, 0),
+            householdId = TEST_HOUSEHOLD_ID, tutorId = owner, petId = petId, responsibleTutorId = owner, sequence = 0L,
+            type = EventType.SERVICE, title = "Banho", dueAt = Instant.parse("2026-07-20T13:00:00Z"), zoneId = access.zoneId,
             status = CareOccurrenceStatus.SCHEDULED, estimatedCostAmount = BigDecimal("80.00"), estimatedCostCurrency = "BRL",
             createdAt = clock.now().toInstant(), updatedAt = clock.now().toInstant(),
         )

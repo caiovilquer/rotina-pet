@@ -1,6 +1,7 @@
 package dev.vilquer.petcarescheduler.infra.adapter.output.external
 
 import dev.vilquer.petcarescheduler.core.domain.care.CareOccurrenceId
+import dev.vilquer.petcarescheduler.core.domain.care.CarePlanId
 import dev.vilquer.petcarescheduler.core.domain.entity.TutorId
 import dev.vilquer.petcarescheduler.infra.adapter.output.persistence.jpa.entity.CareReminderOutboxJpa
 import dev.vilquer.petcarescheduler.infra.adapter.output.persistence.jpa.repository.CareReminderOutboxJpaRepository
@@ -14,7 +15,7 @@ import java.time.Instant
 @Repository
 class CareReminderOutboxJpaAdapter(private val jpa: CareReminderOutboxJpaRepository) : CareReminderOutboxPort {
     override fun enqueueIfAbsent(message: CareReminderOutboxMessage) {
-        if (jpa.existsByOccurrenceId(message.occurrenceId.value)) return
+        if (jpa.existsByOccurrenceIdAndCancelledAtIsNull(message.occurrenceId.value)) return
         try {
             jpa.save(
                 CareReminderOutboxJpa().also {
@@ -31,7 +32,7 @@ class CareReminderOutboxJpaAdapter(private val jpa: CareReminderOutboxJpaReposit
     }
 
     override fun findPendingDelivery(maxAttempts: Int, limit: Int) =
-        jpa.findAllBySentAtIsNullAndAttemptsLessThanOrderByCreatedAtAsc(maxAttempts, PageRequest.of(0, limit)).map {
+        jpa.findAllBySentAtIsNullAndCancelledAtIsNullAndAttemptsLessThanOrderByCreatedAtAsc(maxAttempts, PageRequest.of(0, limit)).map {
             CareReminderOutboxMessage(
                 it.id, CareOccurrenceId(it.occurrenceId), TutorId(it.tutorId), it.tutorEmail,
                 it.petName, it.createdAt, it.attempts,
@@ -43,6 +44,15 @@ class CareReminderOutboxJpaAdapter(private val jpa: CareReminderOutboxJpaReposit
         item.sentAt = Instant.now()
         jpa.save(item)
     }
+
+    override fun markCancelled(id: Long, at: Instant) {
+        val item = jpa.findById(id).orElse(null) ?: return
+        item.cancelledAt = at
+        jpa.save(item)
+    }
+
+    override fun cancelPendingForPlan(planId: CarePlanId, from: Instant, at: Instant) =
+        jpa.cancelPendingForPlan(planId.value, from, at)
 
     override fun incrementAttempts(id: Long) {
         val item = jpa.findById(id).orElse(null) ?: return

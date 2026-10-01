@@ -13,18 +13,23 @@ class CareEscalationRelayService(
     private val notifier: NotificationPort,
     private val activities: HouseholdActivityRepositoryPort,
     private val clock: ClockPort,
-    private val households: HouseholdRepositoryPort? = null,
+    private val members: HouseholdMemberRepositoryPort,
 ) : DispatchPendingCareEscalationsUseCase {
     override fun dispatchPendingCareEscalations() {
         outbox.findPending(MAX_ATTEMPTS, BATCH).forEach { message ->
             val occurrence = occurrences.findByIdAndHousehold(message.occurrenceId, message.householdId)
             if (occurrence?.status != CareOccurrenceStatus.SCHEDULED) {
-                message.id?.let(outbox::markSent)
+                message.id?.let { outbox.markCancelled(it, clock.now().toInstant()) }
+                return@forEach
+            }
+            val member = members.findAccess(message.recipientTutorId, message.householdId)
+            if (member?.role != dev.vilquer.petcarescheduler.core.domain.household.HouseholdRole.OWNER) {
+                message.id?.let { outbox.markCancelled(it, clock.now().toInstant()) }
                 return@forEach
             }
             val sent = notifier.sendCareEscalation(CareEscalationNotificationTarget(
                 message.recipientEmail, message.petName, message.careTitle, message.dueAt,
-                households?.findById(message.householdId)?.timezone?.id ?: HouseholdTimezone.DEFAULT_ID,
+                occurrence.zoneId.id,
             ))
             message.id?.let { id ->
                 if (sent) {

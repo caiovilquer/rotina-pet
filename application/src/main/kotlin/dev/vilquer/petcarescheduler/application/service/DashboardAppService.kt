@@ -22,7 +22,7 @@ class DashboardAppService(
     override fun getOverview(access: HouseholdAccess): DashboardOverviewResult {
         val tutor = tutors.findById(access.actorTutorId)
             ?: throw NotFoundException("Tutor ${access.actorTutorId.value} not found")
-        val now = clock.now(access.zoneId).toLocalDateTime()
+        val now = clock.now(access.zoneId).toInstant()
         val petItems = pets.listByHousehold(access.householdId, page = 0, size = MAX_PETS)
 
         return DashboardOverviewResult(
@@ -34,7 +34,7 @@ class DashboardAppService(
             totalPets = pets.countByHousehold(access.householdId),
             totalEvents = occurrences.countByHousehold(access.householdId),
             pets = petItems.map { it.toSummary() },
-            upcomingEvents = occurrences.findUpcomingByHousehold(access.householdId, now, now.plusDays(7), MAX_UPCOMING).map {
+            upcomingEvents = occurrences.findUpcomingByHousehold(access.householdId, now, now.plus(java.time.Duration.ofDays(7)), MAX_UPCOMING).map {
                 dev.vilquer.petcarescheduler.usecase.result.CareOccurrenceResult(
                     id = it.id.value,
                     version = it.version,
@@ -45,6 +45,7 @@ class DashboardAppService(
                     title = it.title,
                     instructions = it.instructions,
                     dueAt = it.dueAt,
+                    dueAtLocal = it.dueAt.atZone(it.zoneId).toLocalDateTime(),
                     status = it.status,
                     completedAt = it.completedAt,
                     completedByTutorId = it.completedByTutorId?.value,
@@ -55,7 +56,7 @@ class DashboardAppService(
                     estimatedCostAmount = it.estimatedCostAmount,
                     estimatedCostCurrency = it.estimatedCostCurrency,
                     canUndoUntil = it.completedAt?.plus(CareAppService.UNDO_WINDOW),
-                    timezone = access.zoneId.id,
+                    timezone = it.zoneId.id,
                 )
             },
         )

@@ -82,5 +82,5 @@ O rollback de aplicação pode voltar ao Ciclo 4 sem remover colunas ou tabelas.
 ## Verificação
 
 - Testes de serviço cobrem autorização, minimização padrão, expiração, hash sem token bruto, composição realizado/previsão e restrição por papel.
-- O smoke test sobe a aplicação completa com H2, executa Flyway até V17 e valida o schema Hibernate.
+- O smoke test sobe a aplicação completa com PostgreSQL/pgvector, executa todas as migrations e valida o schema Hibernate.
 - O frontend possui testes dos contratos HTTP, build de produção e verificação visual responsiva e de impressão.

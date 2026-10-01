@@ -103,8 +103,8 @@ class FinanceAppService(
         val expenseItems = expenses.search(access.householdId, ExpenseFilter(fromInstant, toInstant, query.petId), 0, MAX_ITEMS)
         val clinical = healthRecords.searchCostsByHousehold(access.householdId, query.petId, fromInstant, toInstant, MAX_ITEMS)
             .filter { it.costAmount != null && it.currency != null }
-        val forecastStart = localNow.toLocalDateTime()
-        val forecastEnd = query.forecastTo.plusDays(1).atStartOfDay()
+        val forecastStart = localNow.toInstant()
+        val forecastEnd = query.forecastTo.plusDays(1).atStartOfDay(zone).toInstant()
         val forecast = occurrences.searchByHousehold(
             access.householdId,
             CareOccurrenceFilter(forecastStart, forecastEnd, query.petId, status = CareOccurrenceStatus.SCHEDULED),
@@ -143,7 +143,7 @@ class FinanceAppService(
         return FinanceOverviewResult(
             query.from, query.to, query.forecastTo, realized, forecastTotals,
             categories.sortedWith(compareBy({ it.currency }, { -it.amount.toDouble() })), monthly, upcoming,
-            insights(realized, categories, forecast, localNow.toLocalDateTime().plusDays(7)),
+            insights(realized, categories, forecast, localNow.toInstant().plus(Duration.ofDays(7))),
         )
     }
 
@@ -151,7 +151,7 @@ class FinanceAppService(
         realized: List<RealizedMoneyResult>,
         categories: List<CategoryCostResult>,
         forecast: List<dev.vilquer.petcarescheduler.core.domain.care.CareOccurrence>,
-        sevenDays: java.time.LocalDateTime,
+        sevenDays: Instant,
     ): List<FinancialInsightResult> = buildList {
         realized.forEach { total ->
             if (total.total > ZERO) categories.filter { it.currency == total.currency }.maxByOrNull { it.amount }?.let { top ->

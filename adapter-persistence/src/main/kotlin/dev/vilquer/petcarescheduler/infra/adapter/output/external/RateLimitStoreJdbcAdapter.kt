@@ -9,18 +9,9 @@ import java.time.Instant
 
 @Repository
 class RateLimitStoreJdbcAdapter(private val jdbc: JdbcTemplate) : RateLimitStorePort {
-    private val h2Locks = Array(64) { Any() }
-    private val isPostgres: Boolean by lazy {
-        jdbc.dataSource!!.connection.use { it.metaData.databaseProductName.contains("PostgreSQL", ignoreCase = true) }
-    }
-
     override fun registerAttempt(key: String, now: Instant, window: Duration): Int {
         val cutoff = now.minus(window)
-        return if (isPostgres) registerPostgres(key, now, cutoff) else registerH2(key, now, cutoff)
-    }
-
-    private fun registerPostgres(key: String, now: Instant, cutoff: Instant): Int =
-        requireNotNull(
+        return requireNotNull(
             jdbc.queryForObject(
                 """
                 insert into rate_limit_attempt (id, count, window_start, version)
@@ -44,31 +35,6 @@ class RateLimitStoreJdbcAdapter(private val jdbc: JdbcTemplate) : RateLimitStore
                 Timestamp.from(cutoff),
             ),
         )
-
-    private fun registerH2(key: String, now: Instant, cutoff: Instant): Int = synchronized(
-        h2Locks[(key.hashCode() and Int.MAX_VALUE) % h2Locks.size],
-    ) {
-        val updated = jdbc.update(
-            """
-            update rate_limit_attempt
-               set count = case when window_start < ? then 1 else count + 1 end,
-                   window_start = case when window_start < ? then ? else window_start end,
-                   version = coalesce(version, 0) + 1
-             where id = ?
-            """.trimIndent(),
-            Timestamp.from(cutoff),
-            Timestamp.from(cutoff),
-            Timestamp.from(now),
-            key,
-        )
-        if (updated == 0) {
-            jdbc.update(
-                "insert into rate_limit_attempt (id, count, window_start, version) values (?, 1, ?, 0)",
-                key,
-                Timestamp.from(now),
-            )
-        }
-        requireNotNull(jdbc.queryForObject("select count from rate_limit_attempt where id = ?", Int::class.java, key))
     }
 
     override fun delete(key: String) {

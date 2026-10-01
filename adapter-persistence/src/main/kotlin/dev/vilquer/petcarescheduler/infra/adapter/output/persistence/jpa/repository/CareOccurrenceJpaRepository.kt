@@ -12,11 +12,10 @@ import org.springframework.data.jpa.repository.Modifying
 import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.query.Param
 import java.time.Instant
-import java.time.LocalDateTime
 import java.util.UUID
 
 interface CareOccurrenceJpaRepository : JpaRepository<CareOccurrenceJpa, UUID> {
-    fun existsByPlanIdAndScheduleRevisionAndSequence(planId: UUID, scheduleRevision: Int, sequence: Int): Boolean
+    fun existsByPlanIdAndScheduleRevisionAndSequence(planId: UUID, scheduleRevision: Int, sequence: Long): Boolean
 
     @Query("select o from CareOccurrenceJpa o where o.id = :id and o.tutorId = :tutorId")
     fun findOwned(@Param("id") id: UUID, @Param("tutorId") tutorId: Long): CareOccurrenceJpa?
@@ -36,8 +35,8 @@ interface CareOccurrenceJpaRepository : JpaRepository<CareOccurrenceJpa, UUID> {
     """)
     fun search(
         @Param("tutorId") tutorId: Long,
-        @Param("from") from: LocalDateTime,
-        @Param("to") to: LocalDateTime,
+        @Param("from") from: Instant,
+        @Param("to") to: Instant,
         @Param("petId") petId: Long?,
         @Param("type") type: EventType?,
         @Param("status") status: CareOccurrenceStatus?,
@@ -51,7 +50,7 @@ interface CareOccurrenceJpaRepository : JpaRepository<CareOccurrenceJpa, UUID> {
     """)
     fun cancelScheduledFrom(
         @Param("planId") planId: UUID,
-        @Param("from") from: LocalDateTime,
+        @Param("from") from: Instant,
         @Param("scheduled") scheduled: CareOccurrenceStatus,
         @Param("cancelled") cancelled: CareOccurrenceStatus,
         @Param("updatedAt") updatedAt: Instant,
@@ -71,8 +70,8 @@ interface CareOccurrenceJpaRepository : JpaRepository<CareOccurrenceJpa, UUID> {
 
     fun findAllByStatusAndDueAtGreaterThanEqualAndDueAtLessThanOrderByDueAtAsc(
         status: CareOccurrenceStatus,
-        from: LocalDateTime,
-        to: LocalDateTime,
+        from: Instant,
+        to: Instant,
         pageable: Pageable,
     ): List<CareOccurrenceJpa>
 
@@ -87,12 +86,15 @@ interface CareOccurrenceJpaRepository : JpaRepository<CareOccurrenceJpa, UUID> {
     fun findUpcoming(
         @Param("tutorId") tutorId: Long,
         @Param("status") status: CareOccurrenceStatus,
-        @Param("from") from: LocalDateTime,
-        @Param("to") to: LocalDateTime,
+        @Param("from") from: Instant,
+        @Param("to") to: Instant,
         pageable: Pageable,
     ): List<CareOccurrenceJpa>
 
     fun findByIdAndHouseholdId(id: UUID, householdId: UUID): CareOccurrenceJpa?
+
+    @Query("select o.planId from CareOccurrenceJpa o where o.id = :id and o.householdId = :householdId")
+    fun findPlanIdByHousehold(@Param("id") id: UUID, @Param("householdId") householdId: UUID): UUID?
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select o from CareOccurrenceJpa o where o.id = :id and o.householdId = :householdId")
@@ -106,8 +108,8 @@ interface CareOccurrenceJpaRepository : JpaRepository<CareOccurrenceJpa, UUID> {
           and (:status is null or o.status = :status)
         order by o.dueAt asc, o.id asc
     """)
-    fun searchByHousehold(@Param("householdId") householdId: UUID, @Param("from") from: LocalDateTime,
-        @Param("to") to: LocalDateTime, @Param("petId") petId: Long?, @Param("type") type: EventType?,
+    fun searchByHousehold(@Param("householdId") householdId: UUID, @Param("from") from: Instant,
+        @Param("to") to: Instant, @Param("petId") petId: Long?, @Param("type") type: EventType?,
         @Param("status") status: CareOccurrenceStatus?, pageable: Pageable): Page<CareOccurrenceJpa>
 
     fun countByHouseholdId(householdId: UUID): Long
@@ -117,9 +119,15 @@ interface CareOccurrenceJpaRepository : JpaRepository<CareOccurrenceJpa, UUID> {
           and o.dueAt >= :from and o.dueAt < :to order by o.dueAt asc, o.id asc
     """)
     fun findUpcomingByHousehold(@Param("householdId") householdId: UUID, @Param("status") status: CareOccurrenceStatus,
-        @Param("from") from: LocalDateTime, @Param("to") to: LocalDateTime, pageable: Pageable): List<CareOccurrenceJpa>
+        @Param("from") from: Instant, @Param("to") to: Instant, pageable: Pageable): List<CareOccurrenceJpa>
 
     fun findAllByStatusAndCriticalTrueAndDueAtLessThanEqualOrderByDueAtAsc(
-        status: CareOccurrenceStatus, before: LocalDateTime, pageable: Pageable,
+        status: CareOccurrenceStatus, before: Instant, pageable: Pageable,
+    ): List<CareOccurrenceJpa>
+
+    fun findAllByPlanIdAndStatusAndDueAtGreaterThanEqualOrderByDueAtAsc(
+        planId: UUID,
+        status: CareOccurrenceStatus,
+        from: Instant,
     ): List<CareOccurrenceJpa>
 }

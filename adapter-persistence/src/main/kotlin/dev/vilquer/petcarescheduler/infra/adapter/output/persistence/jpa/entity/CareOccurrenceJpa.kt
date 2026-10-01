@@ -10,7 +10,6 @@ import jakarta.persistence.Id
 import jakarta.persistence.Table
 import jakarta.persistence.Version
 import java.time.Instant
-import java.time.LocalDateTime
 import java.util.UUID
 import java.math.BigDecimal
 
@@ -25,11 +24,12 @@ class CareOccurrenceJpa {
     @Column(name = "tutor_id", nullable = false) var tutorId: Long = 0
     @Column(name = "pet_id", nullable = false) var petId: Long = 0
     @Column(name = "responsible_tutor_id", nullable = false) var responsibleTutorId: Long = 0
-    @Column(name = "sequence_number", nullable = false) var sequence: Int = 0
+    @Column(name = "sequence_number", nullable = false) var sequence: Long = 0
     @Enumerated(EnumType.STRING) @Column(nullable = false) lateinit var type: EventType
     @Column(nullable = false, length = 120) lateinit var title: String
     @Column(length = 2000) var instructions: String? = null
-    @Column(name = "due_at", nullable = false) lateinit var dueAt: LocalDateTime
+    @Column(name = "due_at_instant", nullable = false) lateinit var dueAt: Instant
+    @Column(name = "zone_id", nullable = false, length = 64) lateinit var zoneId: String
     @Enumerated(EnumType.STRING) @Column(nullable = false) lateinit var status: CareOccurrenceStatus
     @Column(name = "completed_at") var completedAt: Instant? = null
     @Column(name = "completed_by_tutor_id") var completedByTutorId: Long? = null

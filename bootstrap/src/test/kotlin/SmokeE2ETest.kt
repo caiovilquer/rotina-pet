@@ -6,6 +6,7 @@ import dev.vilquer.petcarescheduler.infra.adapter.output.persistence.jpa.reposit
 import dev.vilquer.petcarescheduler.usecase.contract.drivingports.DispatchPendingRemindersUseCase
 import dev.vilquer.petcarescheduler.usecase.contract.drivingports.SendDailyRemindersUseCase
 import dev.vilquer.petcarescheduler.usecase.contract.drivingports.RegisterEventUseCase
+import dev.vilquer.petcarescheduler.usecase.contract.drivingports.KnowledgeIndexUseCase
 import dev.vilquer.petcarescheduler.usecase.command.RegisterEventCommand
 import dev.vilquer.petcarescheduler.core.domain.entity.EventType
 import dev.vilquer.petcarescheduler.core.domain.entity.PetId
@@ -39,7 +40,7 @@ import java.util.concurrent.Executors
 
 /**
  * Rede de segurança da Fase 1: exercita o fluxo completo da API com o contexto
- * real (H2 + Flyway + JWT). Se o wiring de qualquer bean sumir durante a
+ * real (PostgreSQL/pgvector + Flyway + JWT). Se o wiring de qualquer bean sumir durante a
  * migração de módulos, este teste quebra imediatamente.
  */
 @SpringBootTest(
@@ -52,7 +53,7 @@ import java.util.concurrent.Executors
     ],
 )
 @ActiveProfiles("dev")
-class SmokeE2ETest {
+class SmokeE2ETest : AbstractPostgresIntegrationTest() {
 
     @Autowired
     lateinit var rest: TestRestTemplate
@@ -75,6 +76,9 @@ class SmokeE2ETest {
     @Autowired
     lateinit var healthAttachments: HealthRecordAttachmentRepositoryPort
 
+    @Autowired
+    lateinit var knowledgeIndex: KnowledgeIndexUseCase
+
     private fun jsonHeaders(token: String? = null) = HttpHeaders().apply {
         contentType = MediaType.APPLICATION_JSON
         token?.let { setBearerAuth(it) }
@@ -88,6 +92,151 @@ class SmokeE2ETest {
 
     private fun cookieHeaders(cookieValue: String) = HttpHeaders().apply {
         set("Cookie", "refresh_token=$cookieValue")
+    }
+
+    @Test
+    fun `assistant draft is reviewed and confirmed exactly once`() {
+        val suffix = UUID.randomUUID().toString().take(8)
+        val email = "bia.assistant.$suffix@example.com"
+        val signup = rest.postForEntity(
+            "/api/v1/public/signup",
+            HttpEntity(
+                """{"firstName":"Bia","lastName":"Souza","email":"$email","rawPassword":"s3cret-pwd"}""",
+                jsonHeaders(),
+            ),
+            JsonNode::class.java,
+        )
+        assertEquals(HttpStatus.CREATED, signup.statusCode, "signup assistant: ${signup.body}")
+        val login = rest.postForEntity(
+            "/api/v1/auth/login",
+            HttpEntity("""{"email":"$email","password":"s3cret-pwd"}""", jsonHeaders()),
+            JsonNode::class.java,
+        )
+        assertEquals(HttpStatus.OK, login.statusCode, "login assistant: ${login.body}")
+        val token = login.body!!["token"].asText()
+        val pet = rest.postForEntity(
+            "/api/v1/pets",
+            HttpEntity(
+                """{"name":"Mel","species":"Dog","breed":"SRD","birthdate":"2021-01-01"}""",
+                jsonHeaders(token),
+            ),
+            JsonNode::class.java,
+        )
+        assertEquals(HttpStatus.CREATED, pet.statusCode, "pet assistant: ${pet.body}")
+        val petId = pet.body!!["petId"].asLong()
+        val start = LocalDateTime.now(ZoneId.of("America/Sao_Paulo")).plusDays(1).withHour(8).withMinute(0).truncatedTo(ChronoUnit.MINUTES)
+        val requestId = UUID.randomUUID()
+        val generated = rest.postForEntity(
+            "/api/v1/assistant/care-drafts",
+            HttpEntity(
+                """{"requestId":"$requestId","instruction":"Vacina da Mel em ${start.toLocalDate()} às 08:00"}""",
+                jsonHeaders(token),
+            ),
+            JsonNode::class.java,
+        )
+        assertEquals(HttpStatus.CREATED, generated.statusCode, "generate draft: ${generated.body}")
+        assertEquals("READY", generated.body!!["status"].asText(), "draft: ${generated.body}")
+        assertEquals(petId, generated.body!!["fields"]["petId"].asLong())
+        assertEquals("EXPLICIT", generated.body!!["provenance"]["PET"].asText())
+        val draftId = generated.body!!["id"].asText()
+        val draftVersion = generated.body!!["version"].asLong()
+        val confirmBody = """{"requestId":"${UUID.randomUUID()}","expectedVersion":$draftVersion}"""
+
+        val confirmed = rest.postForEntity(
+            "/api/v1/assistant/care-drafts/$draftId/confirm",
+            HttpEntity(confirmBody, jsonHeaders(token)),
+            JsonNode::class.java,
+        )
+        assertEquals(HttpStatus.OK, confirmed.statusCode, "confirm draft: ${confirmed.body}")
+        assertEquals("CONFIRMED", confirmed.body!!["draft"]["status"].asText())
+        val planId = confirmed.body!!["plan"]["id"].asText()
+
+        val replay = rest.postForEntity(
+            "/api/v1/assistant/care-drafts/$draftId/confirm",
+            HttpEntity(confirmBody, jsonHeaders(token)),
+            JsonNode::class.java,
+        )
+        assertEquals(HttpStatus.OK, replay.statusCode, "confirm replay: ${replay.body}")
+        assertEquals(planId, replay.body!!["plan"]["id"].asText())
+    }
+
+    @Test
+    fun `assistant answers structured and grounded questions without cross household evidence`() {
+        val suffix = UUID.randomUUID().toString().take(8)
+        val firstEmail = "history.$suffix@example.com"
+        val firstSignup = rest.postForEntity(
+            "/api/v1/public/signup",
+            HttpEntity("""{"firstName":"Lia","lastName":"Moraes","email":"$firstEmail","rawPassword":"s3cret-pwd"}""", jsonHeaders()),
+            JsonNode::class.java,
+        )
+        assertEquals(HttpStatus.CREATED, firstSignup.statusCode)
+        val firstLogin = rest.postForEntity(
+            "/api/v1/auth/login",
+            HttpEntity("""{"email":"$firstEmail","password":"s3cret-pwd"}""", jsonHeaders()),
+            JsonNode::class.java,
+        )
+        val firstToken = firstLogin.body!!["token"].asText()
+        val firstPet = rest.postForEntity(
+            "/api/v1/pets",
+            HttpEntity("""{"name":"Luna","species":"Cat","breed":"SRD","birthdate":"2022-01-01"}""", jsonHeaders(firstToken)),
+            JsonNode::class.java,
+        )
+        val firstPetId = firstPet.body!!["petId"].asLong()
+        val record = rest.postForEntity(
+            "/api/v1/pets/$firstPetId/health-records",
+            HttpEntity(
+                """{"type":"VACCINE","occurredAt":"${Instant.now().minusSeconds(3600)}","title":"Vacina antirrábica","notes":"Após a vacina, Luna bebeu água normalmente durante todo o dia.","productName":"Produto registrado"}""",
+                jsonHeaders(firstToken),
+            ),
+            JsonNode::class.java,
+        )
+        assertEquals(HttpStatus.CREATED, record.statusCode, "health record: ${record.body}")
+        knowledgeIndex.processBatch()
+        val sources = rest.exchange(
+            "/api/v1/assistant/knowledge-sources?petId=$firstPetId",
+            HttpMethod.GET,
+            HttpEntity<Void>(jsonHeaders(firstToken)),
+            JsonNode::class.java,
+        )
+        assertEquals(HttpStatus.OK, sources.statusCode, "knowledge sources: ${sources.body}")
+        assertEquals("READY", sources.body!![0]["status"].asText(), "knowledge sources: ${sources.body}")
+
+        val structured = rest.postForEntity(
+            "/api/v1/assistant/questions",
+            HttpEntity("""{"petId":$firstPetId,"question":"Quando foi a última vacina?"}""", jsonHeaders(firstToken)),
+            JsonNode::class.java,
+        )
+        assertEquals(HttpStatus.OK, structured.statusCode, "structured answer: ${structured.body}")
+        assertEquals("STRUCTURED", structured.body!!["kind"].asText())
+        assertTrue(structured.body!!["citations"].size() > 0)
+
+        val grounded = rest.postForEntity(
+            "/api/v1/assistant/questions",
+            HttpEntity("""{"petId":$firstPetId,"question":"O que a nota registra sobre hidratação e água?"}""", jsonHeaders(firstToken)),
+            JsonNode::class.java,
+        )
+        assertEquals(HttpStatus.OK, grounded.statusCode, "grounded answer: ${grounded.body}")
+        assertEquals("RAG", grounded.body!!["kind"].asText())
+        assertEquals(false, grounded.body!!["insufficientEvidence"].asBoolean(), "grounded answer: ${grounded.body}")
+        assertEquals(record.body!!["id"].asText(), grounded.body!!["citations"][0]["resourceId"].asText())
+
+        val secondEmail = "history.other.$suffix@example.com"
+        rest.postForEntity(
+            "/api/v1/public/signup",
+            HttpEntity("""{"firstName":"Nina","lastName":"Costa","email":"$secondEmail","rawPassword":"s3cret-pwd"}""", jsonHeaders()),
+            JsonNode::class.java,
+        )
+        val secondLogin = rest.postForEntity(
+            "/api/v1/auth/login",
+            HttpEntity("""{"email":"$secondEmail","password":"s3cret-pwd"}""", jsonHeaders()),
+            JsonNode::class.java,
+        )
+        val crossTenant = rest.postForEntity(
+            "/api/v1/assistant/questions",
+            HttpEntity("""{"petId":$firstPetId,"question":"O que consta na nota?"}""", jsonHeaders(secondLogin.body!!["token"].asText())),
+            JsonNode::class.java,
+        )
+        assertEquals(HttpStatus.NOT_FOUND, crossTenant.statusCode)
     }
 
     @Test
@@ -150,7 +299,7 @@ class SmokeE2ETest {
         val planCreated = rest.postForEntity(
             "/api/v1/care-plans",
             HttpEntity(
-                """{"petId":$petId,"type":"VACCINE","title":"Antirrábica","instructions":"Levar carteira","startAt":"$startAt","frequency":"DAILY","intervalCount":1,"repetitions":2,"reminderMinutesBefore":30}""",
+                """{"petId":$petId,"type":"VACCINE","title":"Antirrábica","instructions":"Levar carteira","startAt":"$startAt","zoneId":"America/Sao_Paulo","scheduleRule":{"kind":"CALENDAR_INTERVAL","calendarUnit":"DAY","intervalCount":1,"dailyTimes":[],"repetitions":2},"reminderMinutesBefore":30}""",
                 jsonHeaders(token),
             ),
             JsonNode::class.java,
@@ -547,7 +696,7 @@ class SmokeE2ETest {
         assertTrue(eventCreated.eventId.value > 0)
 
         // Chama os beans diretamente (em vez de esperar o cron) para exercitar
-        // o ReminderOutboxJpaAdapter de verdade, contra o H2, sem fakes.
+        // o ReminderOutboxJpaAdapter de verdade, contra PostgreSQL, sem fakes.
         sendDailyReminders.sendRemindersForToday()
         sendDailyReminders.sendRemindersForToday() // idempotência: não deve duplicar a mensagem
 

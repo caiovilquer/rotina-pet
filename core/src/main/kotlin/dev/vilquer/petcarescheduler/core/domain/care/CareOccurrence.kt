@@ -6,7 +6,7 @@ import dev.vilquer.petcarescheduler.core.domain.entity.TutorId
 import dev.vilquer.petcarescheduler.core.domain.household.HouseholdId
 import java.time.Duration
 import java.time.Instant
-import java.time.LocalDateTime
+import java.time.ZoneId
 import java.util.UUID
 import java.math.BigDecimal
 
@@ -23,11 +23,12 @@ data class CareOccurrence(
     val tutorId: TutorId,
     val petId: PetId,
     val responsibleTutorId: TutorId,
-    val sequence: Int,
+    val sequence: Long,
     val type: EventType,
     val title: String,
     val instructions: String? = null,
-    val dueAt: LocalDateTime,
+    val dueAt: Instant,
+    val zoneId: ZoneId = ZoneId.of("UTC"),
     val status: CareOccurrenceStatus,
     val critical: Boolean = false,
     val escalationDelayMinutes: Int? = null,

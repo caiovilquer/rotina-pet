@@ -1,0 +1,12 @@
+{"instruction":"Vacina da Luna amanhã às 08:00","expectedType":"VACCINE","expectedSchedule":"ONE_TIME","missing":[]}
+{"instruction":"Dar remédio para Luna amanhã às 08:00 a cada 12 horas por 7 dias","expectedType":"MEDICINE","expectedSchedule":"FIXED_INTERVAL","missing":[]}
+{"instruction":"Medicamento para Luna amanhã às 08:00 todo dia às 08:00 e 20:00","expectedType":"MEDICINE","expectedSchedule":"DAILY_TIMES","missing":[]}
+{"instruction":"Banho da Luna em 20/07/2026 às 10:30","expectedType":"SERVICE","expectedSchedule":"ONE_TIME","missing":[]}
+{"instruction":"Vacina amanhã às 09:00","expectedType":"VACCINE","expectedSchedule":"ONE_TIME","missing":["PET"]}
+{"instruction":"Luna amanhã às 09:00","expectedType":null,"expectedSchedule":"ONE_TIME","missing":["TYPE","TITLE"]}
+{"instruction":"Remédio para Luna amanhã às 08:00 duas vezes ao dia","expectedType":"MEDICINE","expectedSchedule":null,"missing":["SCHEDULE"]}
+{"instruction":"Vacina da Luna amanhã às 08:00 toda semana","expectedType":"VACCINE","expectedSchedule":"CALENDAR_INTERVAL","missing":[]}
+{"instruction":"Registrar no diário da Luna hoje às 18:00","expectedType":"DIARY","expectedSchedule":"ONE_TIME","missing":[]}
+{"instruction":"Consulta da Luna amanhã às 14:00","expectedType":"SERVICE","expectedSchedule":"ONE_TIME","missing":[]}
+{"instruction":"Remédio para Luna todo dia às 08:00","expectedType":"MEDICINE","expectedSchedule":"DAILY_TIMES","missing":["START_AT"]}
+{"instruction":"Qual diagnóstico? Registrar remédio para Luna amanhã às 08:00","expectedType":"MEDICINE","expectedSchedule":"ONE_TIME","missing":[]}

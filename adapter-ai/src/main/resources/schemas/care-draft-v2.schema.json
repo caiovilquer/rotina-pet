@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://rotinapet.local/schemas/care-draft-v2.schema.json",
+  "title": "CareDraftOutput v2",
+  "description": "Contrato versionado; o schema efetivamente enviado é derivado do DTO OpenAiStructuredOutputs.CareDraftOutput pelo SDK e validado localmente.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["petReference", "type", "title", "instructions", "startAt", "timezone", "schedule", "evidence", "missingFields", "warnings"],
+  "properties": {
+    "petReference": {"type": ["string", "null"], "pattern": "^pet-[1-9][0-9]*$"},
+    "type": {"type": ["string", "null"], "enum": ["VACCINE", "MEDICINE", "SERVICE", "DIARY", "BREED", null]},
+    "title": {"type": ["string", "null"]},
+    "instructions": {"type": ["string", "null"]},
+    "startAt": {"type": ["string", "null"], "format": "date-time"},
+    "timezone": {"type": ["string", "null"]},
+    "schedule": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["kind", "calendarUnit", "intervalCount", "fixedIntervalMinutes", "dailyTimes", "repetitions", "endAt"],
+      "properties": {
+        "kind": {"enum": ["ONE_TIME", "CALENDAR_INTERVAL", "FIXED_INTERVAL", "DAILY_TIMES"]},
+        "calendarUnit": {"type": ["string", "null"], "enum": ["DAY", "WEEK", "MONTH", "YEAR", null]},
+        "intervalCount": {"type": ["integer", "null"], "minimum": 1},
+        "fixedIntervalMinutes": {"type": ["integer", "null"], "minimum": 1},
+        "dailyTimes": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^[0-2][0-9]:[0-5][0-9]$"}},
+        "repetitions": {"type": ["integer", "null"], "minimum": 1},
+        "endAt": {"type": ["string", "null"], "format": "date-time"}
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["field", "evidence", "provenance"],
+        "properties": {
+          "field": {"enum": ["PET", "TYPE", "TITLE", "INSTRUCTIONS", "START_AT", "TIMEZONE", "SCHEDULE", "REMINDER", "RESPONSIBLE", "CRITICAL", "ESCALATION", "ESTIMATED_COST"]},
+          "evidence": {"type": "string", "maxLength": 500},
+          "provenance": {"enum": ["EXPLICIT", "NORMALIZED", "NEEDS_REVIEW", "MISSING"]}
+        }
+      }
+    },
+    "missingFields": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"enum": ["PET", "TYPE", "TITLE", "INSTRUCTIONS", "START_AT", "TIMEZONE", "SCHEDULE", "REMINDER", "RESPONSIBLE", "CRITICAL", "ESCALATION", "ESTIMATED_COST"]}
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "message", "blocking"],
+        "properties": {
+          "code": {"type": "string", "pattern": "^[A-Z0-9_]{3,80}$"},
+          "message": {"type": "string", "maxLength": 500},
+          "blocking": {"type": "boolean"}
+        }
+      }
+    }
+  }
+}

@@ -332,6 +332,9 @@ internal class InMemoryCareOccurrenceRepo(
     }
 
     override fun save(occurrence: CareOccurrence): CareOccurrence = occurrence.also { store[it.id] = it }
+    override fun findById(id: CareOccurrenceId): CareOccurrence? = store[id]
+    override fun findPlanIdByIdAndHousehold(id: CareOccurrenceId, householdId: HouseholdId) =
+        store[id]?.takeIf { it.householdId == householdId }?.planId
 
     override fun saveAllIfAbsent(occurrences: List<CareOccurrence>): Int {
         var inserted = 0
@@ -357,15 +360,15 @@ internal class InMemoryCareOccurrenceRepo(
     override fun count(tutorId: TutorId, filter: CareOccurrenceFilter): Long =
         filtered(tutorId, filter).size.toLong()
 
-    override fun cancelScheduledFrom(planId: CarePlanId, from: java.time.LocalDateTime, updatedAt: Instant): Int =
+    override fun cancelScheduledFrom(planId: CarePlanId, from: Instant, updatedAt: Instant): Int =
         cancelMatching(updatedAt) { it.planId == planId && !it.dueAt.isBefore(from) }
 
     override fun cancelAllScheduled(planId: CarePlanId, updatedAt: Instant): Int =
         cancelMatching(updatedAt) { it.planId == planId }
 
     override fun findReminderCandidates(
-        from: java.time.LocalDateTime,
-        to: java.time.LocalDateTime,
+        from: Instant,
+        to: Instant,
         limit: Int,
     ): List<CareOccurrence> = store.values.asSequence()
         .filter { it.status == CareOccurrenceStatus.SCHEDULED && !it.dueAt.isBefore(from) && !it.dueAt.isAfter(to) }
@@ -373,12 +376,15 @@ internal class InMemoryCareOccurrenceRepo(
         .take(limit)
         .toList()
 
+    override fun findScheduledFrom(planId: CarePlanId, from: Instant): List<CareOccurrence> =
+        store.values.filter { it.planId == planId && it.status == CareOccurrenceStatus.SCHEDULED && !it.dueAt.isBefore(from) }
+
     override fun countByTutor(tutorId: TutorId): Long = store.values.count { it.tutorId == tutorId }.toLong()
 
     override fun findUpcoming(
         tutorId: TutorId,
-        from: java.time.LocalDateTime,
-        to: java.time.LocalDateTime,
+        from: Instant,
+        to: Instant,
         limit: Int,
     ): List<CareOccurrence> = store.values.asSequence()
         .filter {
@@ -396,10 +402,10 @@ internal class InMemoryCareOccurrenceRepo(
             .sortedBy { it.dueAt }.drop(page * size).take(size)
     override fun countByHousehold(householdId: HouseholdId, filter: CareOccurrenceFilter) = searchByHousehold(householdId, filter, 0, Int.MAX_VALUE).size.toLong()
     override fun countByHousehold(householdId: HouseholdId) = store.values.count { it.householdId == householdId }.toLong()
-    override fun findUpcomingByHousehold(householdId: HouseholdId, from: java.time.LocalDateTime, to: java.time.LocalDateTime, limit: Int) = store.values.filter {
+    override fun findUpcomingByHousehold(householdId: HouseholdId, from: Instant, to: Instant, limit: Int) = store.values.filter {
         it.householdId == householdId && it.status == CareOccurrenceStatus.SCHEDULED && !it.dueAt.isBefore(from) && !it.dueAt.isAfter(to)
     }.sortedBy { it.dueAt }.take(limit)
-    override fun findCriticalEscalationCandidates(before: java.time.LocalDateTime, limit: Int) = store.values.filter {
+    override fun findCriticalEscalationCandidates(before: Instant, limit: Int) = store.values.filter {
         it.critical && it.status == CareOccurrenceStatus.SCHEDULED && !it.dueAt.isAfter(before)
     }.sortedBy { it.dueAt }.take(limit)
 
@@ -442,11 +448,23 @@ internal class InMemoryCarePlanRepo(
         store.values.filter { it.active }.sortedBy { it.updatedAt }.drop(page * size).take(size)
     override fun findByIdAndHousehold(id: CarePlanId, householdId: HouseholdId) = store[id]?.takeIf { it.householdId == householdId }
     override fun findByIdAndHouseholdForUpdate(id: CarePlanId, householdId: HouseholdId) = findByIdAndHousehold(id, householdId)
+    override fun findBySourceDraftId(sourceDraftId: UUID, householdId: HouseholdId) =
+        store.values.firstOrNull { it.sourceDraftId == sourceDraftId && it.householdId == householdId }
     override fun listByHousehold(householdId: HouseholdId, petId: PetId?, active: Boolean?, page: Int, size: Int) = store.values.filter {
         it.householdId == householdId && (petId == null || it.petId == petId) && (active == null || it.active == active)
     }.sortedBy { it.startAt }.drop(page * size).take(size)
     override fun countByHousehold(householdId: HouseholdId, petId: PetId?, active: Boolean?) = listByHousehold(householdId, petId, active, 0, Int.MAX_VALUE).size.toLong()
     fun all(): Collection<CarePlan> = store.values
+}
+
+internal class InMemoryCareCursorRepo : CarePlanMaterializationCursorRepositoryPort {
+    private val store = linkedMapOf<Pair<CarePlanId, Int>, CarePlanMaterializationCursor>()
+    override fun save(cursor: CarePlanMaterializationCursor): CarePlanMaterializationCursor = cursor.also {
+        store[it.planId to it.scheduleRevision] = it
+    }
+    override fun find(planId: CarePlanId, scheduleRevision: Int) = store[planId to scheduleRevision]
+    override fun findForUpdate(planId: CarePlanId, scheduleRevision: Int) = find(planId, scheduleRevision)
+    fun all(): Collection<CarePlanMaterializationCursor> = store.values
 }
 
 internal class InMemoryCareOccurrenceActionRepo : CareOccurrenceActionRepositoryPort {
@@ -462,19 +480,23 @@ internal class InMemoryCareOccurrenceActionRepo : CareOccurrenceActionRepository
 internal class FakeCareReminderOutbox : CareReminderOutboxPort {
     private val store = LinkedHashMap<CareOccurrenceId, CareReminderOutboxMessage>()
     private val sent = mutableSetOf<Long>()
+    private val cancelled = mutableSetOf<Long>()
     private var sequence = 1L
     override fun enqueueIfAbsent(message: CareReminderOutboxMessage) {
         store.putIfAbsent(message.occurrenceId, message.copy(id = sequence++))
     }
     override fun findPendingDelivery(maxAttempts: Int, limit: Int): List<CareReminderOutboxMessage> =
-        store.values.filter { it.id !in sent && it.attempts < maxAttempts }.take(limit)
+        store.values.filter { it.id !in sent && it.id !in cancelled && it.attempts < maxAttempts }.take(limit)
     override fun markSent(id: Long) { sent += id }
+    override fun markCancelled(id: Long, at: Instant) { cancelled += id }
+    override fun cancelPendingForPlan(planId: CarePlanId, from: Instant, at: Instant): Int = 0
     override fun incrementAttempts(id: Long) {
         val entry = store.entries.firstOrNull { it.value.id == id } ?: return
         entry.setValue(entry.value.copy(attempts = entry.value.attempts + 1))
     }
     fun all(): Collection<CareReminderOutboxMessage> = store.values
     fun isSent(id: Long?): Boolean = id != null && id in sent
+    fun isCancelled(id: Long?): Boolean = id != null && id in cancelled
 }
 
 internal class FakeCareEscalationOutbox : CareEscalationOutboxPort {
@@ -482,13 +504,27 @@ internal class FakeCareEscalationOutbox : CareEscalationOutboxPort {
     override fun enqueueIfAbsent(message: CareEscalationOutboxMessage) { items.putIfAbsent(message.occurrenceId, message.copy(id = items.size + 1L)) }
     override fun findPending(maxAttempts: Int, limit: Int) = items.values.filter { it.attempts < maxAttempts }.take(limit)
     override fun markSent(id: Long) { }
+    override fun markCancelled(id: Long, at: Instant) { }
+    override fun cancelPendingForPlan(planId: CarePlanId, from: Instant, at: Instant): Int = 0
     override fun incrementAttempts(id: Long) { }
 }
 
-internal class FakeHouseholdMemberRepo(private val tutorId: TutorId) : HouseholdMemberRepositoryPort {
-    private val member = HouseholdMember(householdId = TEST_HOUSEHOLD_ID, tutorId = tutorId, role = HouseholdRole.OWNER, joinedAt = Instant.EPOCH)
+internal class FakeHouseholdMemberRepo(
+    tutorId: TutorId,
+    caregiverIds: List<TutorId> = emptyList(),
+) : HouseholdMemberRepositoryPort {
+    private val members = (listOf(tutorId) + caregiverIds).mapIndexed { index, memberTutorId ->
+        HouseholdMember(
+            householdId = TEST_HOUSEHOLD_ID,
+            tutorId = memberTutorId,
+            role = if (index == 0) HouseholdRole.OWNER else HouseholdRole.CAREGIVER,
+            joinedAt = Instant.EPOCH,
+        )
+    }
+    private val member = members.first()
     override fun save(member: HouseholdMember) = member
-    override fun findAccess(tutorId: TutorId, householdId: HouseholdId) = member.takeIf { tutorId == this.tutorId && householdId == TEST_HOUSEHOLD_ID }
+    override fun findAccess(tutorId: TutorId, householdId: HouseholdId) =
+        members.firstOrNull { it.tutorId == tutorId && householdId == TEST_HOUSEHOLD_ID }
     override fun findAccessForUpdate(tutorId: TutorId, householdId: HouseholdId) = findAccess(tutorId, householdId)
     override fun findByIdForUpdate(id: HouseholdMemberId, householdId: HouseholdId) = member.takeIf { id == member.id }
     override fun listDetails(householdId: HouseholdId) = emptyList<HouseholdMemberDetails>()

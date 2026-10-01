@@ -186,6 +186,14 @@ class EmailNotificationAdapter(
     private fun renderTemplate(
         type: EventType,
         descriptionRaw: String?,
+        dueAt: java.time.Instant,
+        petNameRaw: String?,
+        zoneId: ZoneId,
+    ) = renderTemplate(type, descriptionRaw, dueAt.atZone(zoneId).toLocalDateTime(), petNameRaw, zoneId)
+
+    private fun renderTemplate(
+        type: EventType,
+        descriptionRaw: String?,
         dateStart: java.time.LocalDateTime,
         petNameRaw: String?,
         zoneId: ZoneId = DEFAULTZONE,
@@ -247,6 +255,14 @@ class EmailNotificationAdapter(
         """.trimIndent()
     }
 
+    private fun reminderText(
+        type: EventType,
+        description: String?,
+        dueAt: java.time.Instant,
+        petName: String?,
+        zoneId: ZoneId,
+    ) = reminderText(type, description, dueAt.atZone(zoneId).toLocalDateTime(), petName, zoneId)
+
     private fun parseZoneId(value: String): ZoneId =
         try {
             ZoneId.of(value)
@@ -254,7 +270,6 @@ class EmailNotificationAdapter(
             HouseholdTimezone.parse(null)
         }
 }
-
 
 
 

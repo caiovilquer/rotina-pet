@@ -2,6 +2,8 @@ package dev.vilquer.petcarescheduler.application.config
 
 import dev.vilquer.petcarescheduler.core.domain.care.CareOccurrenceId
 import dev.vilquer.petcarescheduler.core.domain.care.CareOccurrenceStatus
+import dev.vilquer.petcarescheduler.core.domain.care.CalendarIntervalUnit
+import dev.vilquer.petcarescheduler.core.domain.care.ScheduleRule
 import dev.vilquer.petcarescheduler.core.domain.entity.EventType
 import dev.vilquer.petcarescheduler.core.domain.entity.PetId
 import dev.vilquer.petcarescheduler.core.domain.entity.TutorId
@@ -16,9 +18,7 @@ import dev.vilquer.petcarescheduler.core.domain.household.HouseholdInvitation
 import dev.vilquer.petcarescheduler.core.domain.household.HouseholdMember
 import dev.vilquer.petcarescheduler.core.domain.household.HouseholdRole
 import dev.vilquer.petcarescheduler.core.domain.valueobject.Email
-import dev.vilquer.petcarescheduler.core.domain.valueobject.Frequency
 import dev.vilquer.petcarescheduler.core.domain.valueobject.PhoneNumber
-import dev.vilquer.petcarescheduler.core.domain.valueobject.Recurrence
 import dev.vilquer.petcarescheduler.usecase.command.AssignCareOccurrenceCommand
 import dev.vilquer.petcarescheduler.usecase.command.CompleteCareOccurrenceCommand
 import dev.vilquer.petcarescheduler.usecase.command.CreateCarePlanCommand
@@ -61,7 +61,7 @@ import java.time.LocalDateTime
 import java.util.UUID
 
 /**
- * Popula o H2 em memória com um cenário completo para exercitar login,
+ * Popula o PostgreSQL local com um cenário completo para exercitar login,
  * famílias compartilhadas, pets, cuidados, saúde, finanças e convites.
  *
  * Ativo somente com `app.seed.enabled=true` (perfil `dev`).
@@ -269,8 +269,9 @@ class DevDataSeeder(
                 type = EventType.MEDICINE,
                 title = "Antipulgas Thor",
                 instructions = "Aplicar na nuca após o banho.",
-                startAt = now.plusHours(2),
-                recurrence = Recurrence(Frequency.MONTHLY, 1),
+                startAt = now.plusHours(2).atZone(access.zoneId).toInstant(),
+                zoneId = access.zoneId,
+                scheduleRule = ScheduleRule.calendar(CalendarIntervalUnit.MONTH, 1),
                 reminderMinutesBefore = 60,
                 responsibleTutorId = brunoId,
                 estimatedCostAmount = BigDecimal("89.90"),
@@ -284,8 +285,9 @@ class DevDataSeeder(
                 type = EventType.DIARY,
                 title = "Passeio da manhã",
                 instructions = "30 minutos no parque.",
-                startAt = now.minusMinutes(2),
-                recurrence = Recurrence(Frequency.DAILY, 1),
+                startAt = now.minusMinutes(2).atZone(access.zoneId).toInstant(),
+                zoneId = access.zoneId,
+                scheduleRule = ScheduleRule.calendar(CalendarIntervalUnit.DAY, 1),
                 reminderMinutesBefore = 15,
                 responsibleTutorId = anaId,
             ),
@@ -297,8 +299,9 @@ class DevDataSeeder(
                 type = EventType.MEDICINE,
                 title = "Insulina Luna",
                 instructions = "0,5 UI subcutânea. Cuidado crítico.",
-                startAt = now.plusMinutes(30),
-                recurrence = Recurrence(Frequency.DAILY, 1),
+                startAt = now.plusMinutes(30).atZone(access.zoneId).toInstant(),
+                zoneId = access.zoneId,
+                scheduleRule = ScheduleRule.calendar(CalendarIntervalUnit.DAY, 1),
                 reminderMinutesBefore = 10,
                 responsibleTutorId = anaId,
                 critical = true,
@@ -315,8 +318,9 @@ class DevDataSeeder(
                 type = EventType.SERVICE,
                 title = "Tosa higiênica",
                 instructions = null,
-                startAt = now.plusDays(5),
-                recurrence = Recurrence(Frequency.MONTHLY, 2),
+                startAt = now.plusDays(5).atZone(access.zoneId).toInstant(),
+                zoneId = access.zoneId,
+                scheduleRule = ScheduleRule.calendar(CalendarIntervalUnit.MONTH, 2),
                 reminderMinutesBefore = 1440,
                 responsibleTutorId = brunoId,
                 estimatedCostAmount = BigDecimal("120.00"),
@@ -330,8 +334,9 @@ class DevDataSeeder(
                 type = EventType.VACCINE,
                 title = "Reforço V10",
                 instructions = "Levar carteirinha.",
-                startAt = now.plusDays(14),
-                recurrence = null,
+                startAt = now.plusDays(14).atZone(access.zoneId).toInstant(),
+                zoneId = access.zoneId,
+                scheduleRule = ScheduleRule.oneTime(),
                 reminderMinutesBefore = 2880,
                 responsibleTutorId = anaId,
                 estimatedCostAmount = BigDecimal("180.00"),
@@ -342,8 +347,8 @@ class DevDataSeeder(
 
         val dueSoon = careOccurrences.search(
             SearchCareOccurrencesQuery(
-                from = now.minusDays(1),
-                to = now.plusDays(2),
+                from = now.minusDays(1).atZone(access.zoneId).toInstant(),
+                to = now.plusDays(2).atZone(access.zoneId).toInstant(),
                 petId = thor,
                 status = CareOccurrenceStatus.SCHEDULED,
                 page = 0,
@@ -584,8 +589,9 @@ class DevDataSeeder(
                 type = EventType.DIARY,
                 title = "Ração Bob",
                 instructions = "2 xícaras pela manhã",
-                startAt = now.plusHours(1),
-                recurrence = Recurrence(Frequency.DAILY, 1),
+                startAt = now.plusHours(1).atZone(access.zoneId).toInstant(),
+                zoneId = access.zoneId,
+                scheduleRule = ScheduleRule.calendar(CalendarIntervalUnit.DAY, 1),
                 reminderMinutesBefore = 0,
                 responsibleTutorId = diegoId,
             ),
@@ -597,8 +603,9 @@ class DevDataSeeder(
                 type = EventType.MEDICINE,
                 title = "Vermífugo Nina",
                 instructions = null,
-                startAt = now.plusDays(3),
-                recurrence = Recurrence(Frequency.MONTHLY, 3),
+                startAt = now.plusDays(3).atZone(access.zoneId).toInstant(),
+                zoneId = access.zoneId,
+                scheduleRule = ScheduleRule.calendar(CalendarIntervalUnit.MONTH, 3),
                 reminderMinutesBefore = 120,
                 responsibleTutorId = diegoId,
                 estimatedCostAmount = BigDecimal("45.00"),
@@ -661,8 +668,9 @@ class DevDataSeeder(
                 type = EventType.SERVICE,
                 title = "Creche canina",
                 instructions = "Deixar às 8h, buscar às 18h",
-                startAt = now.plusDays(1),
-                recurrence = Recurrence(Frequency.WEEKLY, 1),
+                startAt = now.plusDays(1).atZone(access.zoneId).toInstant(),
+                zoneId = access.zoneId,
+                scheduleRule = ScheduleRule.calendar(CalendarIntervalUnit.WEEK, 1),
                 reminderMinutesBefore = 720,
                 responsibleTutorId = felipeId,
                 estimatedCostAmount = BigDecimal("80.00"),
@@ -676,8 +684,9 @@ class DevDataSeeder(
                 type = EventType.BREED,
                 title = "Controle de cio",
                 instructions = "Observar comportamento",
-                startAt = now.plusDays(10),
-                recurrence = Recurrence(Frequency.MONTHLY, 6),
+                startAt = now.plusDays(10).atZone(access.zoneId).toInstant(),
+                zoneId = access.zoneId,
+                scheduleRule = ScheduleRule.calendar(CalendarIntervalUnit.MONTH, 6),
                 reminderMinutesBefore = 60,
                 responsibleTutorId = elenaId,
             ),

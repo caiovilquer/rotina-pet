@@ -82,26 +82,36 @@ class ArchitectureTest {
         "dev.vilquer.petcarescheduler.infra.adapter.output.cache",
         "dev.vilquer.petcarescheduler.infra.config",
     )
+    private val aiOnlyPackages = listOf(
+        "dev.vilquer.petcarescheduler.infra.adapter.output.ai",
+    )
 
     @Test
     fun `adapter-rest nao importa outro adapter`() {
-        val forbidden = persistenceOnlyPackages + messagingOnlyPackages
+        val forbidden = persistenceOnlyPackages + messagingOnlyPackages + aiOnlyPackages
         val violations = importNames("adapter-rest").filter { imp -> forbidden.any { imp.startsWith(it) } }
         assertTrue(violations.isEmpty(), "adapter-rest importou código de outro adapter: $violations")
     }
 
     @Test
     fun `adapter-persistence nao importa outro adapter`() {
-        val forbidden = restOnlyPackages + messagingOnlyPackages
+        val forbidden = restOnlyPackages + messagingOnlyPackages + aiOnlyPackages
         val violations = importNames("adapter-persistence").filter { imp -> forbidden.any { imp.startsWith(it) } }
         assertTrue(violations.isEmpty(), "adapter-persistence importou código de outro adapter: $violations")
     }
 
     @Test
     fun `adapter-messaging nao importa outro adapter`() {
-        val forbidden = restOnlyPackages + persistenceOnlyPackages
+        val forbidden = restOnlyPackages + persistenceOnlyPackages + aiOnlyPackages
         val violations = importNames("adapter-messaging").filter { imp -> forbidden.any { imp.startsWith(it) } }
         assertTrue(violations.isEmpty(), "adapter-messaging importou código de outro adapter: $violations")
+    }
+
+    @Test
+    fun `adapter-ai nao importa outro adapter`() {
+        val forbidden = restOnlyPackages + persistenceOnlyPackages + messagingOnlyPackages
+        val violations = importNames("adapter-ai").filter { imp -> forbidden.any { imp.startsWith(it) } }
+        assertTrue(violations.isEmpty(), "adapter-ai importou código de outro adapter: $violations")
     }
 
     @Test

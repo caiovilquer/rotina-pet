@@ -35,6 +35,7 @@ interface CarePlanJpaRepository : JpaRepository<CarePlanJpa, UUID> {
     fun findAllByActiveTrueOrderByUpdatedAtAsc(pageable: Pageable): List<CarePlanJpa>
 
     fun findByIdAndHouseholdId(id: UUID, householdId: UUID): CarePlanJpa?
+    fun findBySourceDraftIdAndHouseholdId(sourceDraftId: UUID, householdId: UUID): CarePlanJpa?
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select p from CarePlanJpa p where p.id = :id and p.householdId = :householdId")

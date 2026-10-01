@@ -130,7 +130,7 @@ class EmailTemplatesTest {
                 occurrenceId = CareOccurrenceId(UUID.randomUUID()),
                 type = EventType.VACCINE,
                 title = "Reforço da V10",
-                dueAt = LocalDateTime.of(2026, 7, 20, 10, 30),
+                dueAt = java.time.Instant.parse("2026-07-20T13:30:00Z"),
                 tutorEmail = "caio@example.com",
                 petName = "Thor",
             )
@@ -151,7 +151,7 @@ class EmailTemplatesTest {
                 recipientEmail = "caio@example.com",
                 petName = "Nina",
                 careTitle = "Insulina da manhã",
-                dueAt = LocalDateTime.of(2026, 7, 13, 7, 0),
+                dueAt = java.time.Instant.parse("2026-07-13T10:00:00Z"),
             )
         )
 

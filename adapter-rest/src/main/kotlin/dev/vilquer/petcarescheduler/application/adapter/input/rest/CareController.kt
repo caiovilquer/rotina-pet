@@ -6,11 +6,12 @@ import dev.vilquer.petcarescheduler.application.adapter.input.security.CurrentHo
 import dev.vilquer.petcarescheduler.core.domain.care.CareOccurrenceId
 import dev.vilquer.petcarescheduler.core.domain.care.CareOccurrenceStatus
 import dev.vilquer.petcarescheduler.core.domain.care.CarePlanId
+import dev.vilquer.petcarescheduler.core.domain.care.CalendarIntervalUnit
+import dev.vilquer.petcarescheduler.core.domain.care.ScheduleKind
+import dev.vilquer.petcarescheduler.core.domain.care.ScheduleRule
 import dev.vilquer.petcarescheduler.core.domain.entity.EventType
 import dev.vilquer.petcarescheduler.core.domain.entity.PetId
 import dev.vilquer.petcarescheduler.core.domain.entity.TutorId
-import dev.vilquer.petcarescheduler.core.domain.valueobject.Frequency
-import dev.vilquer.petcarescheduler.core.domain.valueobject.Recurrence
 import dev.vilquer.petcarescheduler.usecase.command.CompleteCareOccurrenceCommand
 import dev.vilquer.petcarescheduler.usecase.command.CreateCarePlanCommand
 import dev.vilquer.petcarescheduler.usecase.command.SearchCareOccurrencesQuery
@@ -50,10 +51,23 @@ import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 import java.time.LocalDateTime
+import java.time.LocalTime
+import java.time.Duration
+import java.time.Instant
 import java.time.OffsetDateTime
 import java.time.ZoneId
 import java.util.UUID
 import java.math.BigDecimal
+
+data class CareScheduleRuleRequest(
+    val kind: ScheduleKind,
+    val calendarUnit: CalendarIntervalUnit? = null,
+    @field:Positive @field:Max(365) val intervalCount: Long? = null,
+    @field:Positive @field:Max(525_600) val fixedIntervalMinutes: Long? = null,
+    @field:Size(max = 24) val dailyTimes: List<String> = emptyList(),
+    @field:Positive val repetitions: Long? = null,
+    val endAt: String? = null,
+)
 
 data class CarePlanRequest(
     @field:Positive val petId: Long,
@@ -61,10 +75,8 @@ data class CarePlanRequest(
     @field:NotBlank @field:Size(max = 120) val title: String,
     @field:Size(max = 2_000) val instructions: String? = null,
     val startAt: String,
-    val frequency: Frequency? = null,
-    @field:Positive @field:Max(365) val intervalCount: Long = 1,
-    @field:Positive @field:Max(10_000) val repetitions: Int? = null,
-    val finalDate: String? = null,
+    val zoneId: String,
+    @field:Valid val scheduleRule: CareScheduleRuleRequest = CareScheduleRuleRequest(ScheduleKind.ONE_TIME),
     @field:Min(0) @field:Max(10_080) val reminderMinutesBefore: Int = 0,
     val responsibleTutorId: Long? = null,
     val critical: Boolean = false,
@@ -82,13 +94,13 @@ class CarePlanController(private val care: CarePlanUseCase, private val househol
     @PostMapping
     fun create(@Valid @RequestBody body: CarePlanRequest, @AuthenticationPrincipal jwt: CurrentJwt): ResponseEntity<CarePlanResult> {
         val access = household.resolve(jwt)
-        val startAt = CareWallClock.parse(body.startAt, access.zoneId)
-        val finalDate = body.finalDate?.let { CareWallClock.parse(it, access.zoneId) }
-        validateDates(body, startAt, finalDate)
+        val zoneId = CareWallClock.zone(body.zoneId, access.zoneId)
+        val startAt = CareWallClock.parse(body.startAt, zoneId)
+        val scheduleRule = body.scheduleRule.toDomain(zoneId)
         val result = care.create(
             CreateCarePlanCommand(
-                PetId(body.petId), body.type, body.title, body.instructions, startAt,
-                body.recurrence(finalDate), body.reminderMinutesBefore,
+                PetId(body.petId), body.type, body.title, body.instructions, startAt, zoneId,
+                scheduleRule, body.reminderMinutesBefore,
                 body.responsibleTutorId?.let(::TutorId), body.critical, body.escalationDelayMinutes, body.escalationTutorId?.let(::TutorId),
                 body.estimatedCostAmount, body.estimatedCostCurrency,
             ),
@@ -104,13 +116,13 @@ class CarePlanController(private val care: CarePlanUseCase, private val househol
         @AuthenticationPrincipal jwt: CurrentJwt,
     ): CarePlanResult {
         val access = household.resolve(jwt)
-        val startAt = CareWallClock.parse(body.startAt, access.zoneId)
-        val finalDate = body.finalDate?.let { CareWallClock.parse(it, access.zoneId) }
-        validateDates(body, startAt, finalDate)
+        val zoneId = CareWallClock.zone(body.zoneId, access.zoneId)
+        val startAt = CareWallClock.parse(body.startAt, zoneId)
+        val scheduleRule = body.scheduleRule.toDomain(zoneId)
         return care.update(
             UpdateCarePlanCommand(
-                CarePlanId(id), body.type, body.title, body.instructions, startAt,
-                body.recurrence(finalDate), body.reminderMinutesBefore,
+                CarePlanId(id), body.type, body.title, body.instructions, startAt, zoneId,
+                scheduleRule, body.reminderMinutesBefore,
                 body.responsibleTutorId?.let(::TutorId), body.critical, body.escalationDelayMinutes, body.escalationTutorId?.let(::TutorId),
                 body.estimatedCostAmount, body.estimatedCostCurrency,
             ),
@@ -136,14 +148,32 @@ class CarePlanController(private val care: CarePlanUseCase, private val househol
     fun deactivate(@PathVariable id: UUID, @AuthenticationPrincipal jwt: CurrentJwt) =
         care.deactivate(CarePlanId(id), household.resolve(jwt))
 
-    private fun validateDates(body: CarePlanRequest, startAt: LocalDateTime, finalDate: LocalDateTime?) {
-        require(finalDate == null || !finalDate.isBefore(startAt)) { "care_plan_final_before_start" }
-        require(body.frequency != null || body.finalDate == null) { "care_plan_final_without_recurrence" }
-        require(body.frequency != null || body.repetitions == null) { "care_plan_repetitions_without_recurrence" }
-    }
+}
 
-    private fun CarePlanRequest.recurrence(finalDate: LocalDateTime?): Recurrence? =
-        frequency?.let { Recurrence(it, intervalCount, repetitions, finalDate) }
+internal fun CareScheduleRuleRequest.toDomain(zoneId: ZoneId): ScheduleRule {
+    val parsedEnd = endAt?.let { CareWallClock.parse(it, zoneId) }
+    val rawTimes = try {
+        dailyTimes.map(LocalTime::parse)
+    } catch (_: Exception) {
+        throw IllegalArgumentException("care_schedule_daily_times_invalid")
+    }
+    require(rawTimes.size == rawTimes.distinct().size) { "care_schedule_daily_times_invalid" }
+    val parsedTimes = rawTimes.sorted()
+    return when (kind) {
+        ScheduleKind.ONE_TIME -> ScheduleRule.oneTime()
+        ScheduleKind.CALENDAR_INTERVAL -> ScheduleRule.calendar(
+            requireNotNull(calendarUnit) { "care_schedule_calendar_unit_required" },
+            requireNotNull(intervalCount) { "care_schedule_interval_required" },
+            repetitions,
+            parsedEnd,
+        )
+        ScheduleKind.FIXED_INTERVAL -> ScheduleRule.fixed(
+            Duration.ofMinutes(requireNotNull(fixedIntervalMinutes) { "care_schedule_fixed_interval_required" }),
+            repetitions,
+            parsedEnd,
+        )
+        ScheduleKind.DAILY_TIMES -> ScheduleRule.daily(parsedTimes, repetitions, parsedEnd)
+    }
 }
 
 data class CareActionRequest(
@@ -173,11 +203,11 @@ class CareOccurrenceController(
         @RequestParam(defaultValue = "20") @Min(1) @Max(100) size: Int,
     ): CareOccurrencesPageResult {
         val access = household.resolve(jwt)
-        val now = clock.now(access.zoneId).toLocalDateTime()
+        val now = clock.now(access.zoneId).toInstant()
         return care.search(
             SearchCareOccurrencesQuery(
-                from?.let { CareWallClock.parse(it, access.zoneId) } ?: now.minusDays(30),
-                to?.let { CareWallClock.parse(it, access.zoneId) } ?: now.plusDays(90),
+                from?.let { CareWallClock.parse(it, access.zoneId) } ?: now.minus(Duration.ofDays(30)),
+                to?.let { CareWallClock.parse(it, access.zoneId) } ?: now.plus(Duration.ofDays(90)),
                 petId?.let(::PetId), type, status, page, size,
             ),
             access,
@@ -218,20 +248,25 @@ class CareOccurrenceController(
     )
 }
 
-/** Agenda is persisted as household wall-clock; offset/Z inputs are normalized to that wall-clock. */
+/** Inputs without an offset use the immutable zone stored with the care plan. */
 internal object CareWallClock {
-    // TODO(timezone-option-b): migrate schedule columns to Instant while retaining each plan's original zoneId.
-    fun parse(value: String, zoneId: ZoneId): LocalDateTime {
+    fun parse(value: String, zoneId: ZoneId): Instant {
         val normalized = value.trim()
         return try {
             if (normalized.endsWith("Z", ignoreCase = true) || OFFSET_SUFFIX.containsMatchIn(normalized)) {
-                OffsetDateTime.parse(normalized).toInstant().atZone(zoneId).toLocalDateTime()
+                OffsetDateTime.parse(normalized).toInstant()
             } else {
-                LocalDateTime.parse(normalized)
+                ScheduleRule.resolveLocal(LocalDateTime.parse(normalized), zoneId)
             }
         } catch (_: Exception) {
             throw IllegalArgumentException("care_datetime_invalid")
         }
+    }
+
+    fun zone(value: String?, fallback: ZoneId): ZoneId = try {
+        value?.trim()?.takeIf(String::isNotEmpty)?.let(ZoneId::of) ?: fallback
+    } catch (_: Exception) {
+        throw IllegalArgumentException("care_timezone_invalid")
     }
 
     private val OFFSET_SUFFIX = Regex("[+-]\\d{2}:\\d{2}$")

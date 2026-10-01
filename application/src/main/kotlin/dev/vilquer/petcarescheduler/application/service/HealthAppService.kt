@@ -27,6 +27,10 @@ import dev.vilquer.petcarescheduler.usecase.contract.drivenports.PetRepositoryPo
 import dev.vilquer.petcarescheduler.usecase.contract.drivenports.TransactionPort
 import dev.vilquer.petcarescheduler.usecase.contract.drivenports.HouseholdActivityRepositoryPort
 import dev.vilquer.petcarescheduler.usecase.contract.drivenports.HouseholdActivityDetails
+import dev.vilquer.petcarescheduler.usecase.contract.drivenports.KnowledgeIndexOperation
+import dev.vilquer.petcarescheduler.usecase.contract.drivenports.KnowledgeIndexOutboxPort
+import dev.vilquer.petcarescheduler.usecase.contract.drivenports.KnowledgeSourceRepositoryPort
+import dev.vilquer.petcarescheduler.usecase.contract.drivenports.KnowledgeSourceType
 import dev.vilquer.petcarescheduler.usecase.contract.drivingports.HealthMeasurementUseCase
 import dev.vilquer.petcarescheduler.usecase.contract.drivingports.HealthRecordUseCase
 import dev.vilquer.petcarescheduler.usecase.result.HealthAttachmentResult
@@ -49,6 +53,9 @@ class HealthAppService(
         override fun save(activity: HouseholdActivity) = activity
         override fun listRecent(householdId: HouseholdId, limit: Int) = emptyList<HouseholdActivityDetails>()
     },
+    private val knowledgeSources: KnowledgeSourceRepositoryPort? = null,
+    private val knowledgeOutbox: KnowledgeIndexOutboxPort? = null,
+    private val embeddingSignature: String = KnowledgeSourceFactory.FAKE_EMBEDDING_SIGNATURE,
 ) : HealthRecordUseCase, HealthMeasurementUseCase {
 
     fun create(command: CreateHealthRecordCommand, tutorId: TutorId): HealthRecordResult {
@@ -72,7 +79,7 @@ class HealthAppService(
         HouseholdId(UUID.fromString("00000000-0000-0000-0000-000000000001")), tutorId, HouseholdRole.OWNER,
     )
 
-    override fun create(command: CreateHealthRecordCommand, access: HouseholdAccess): HealthRecordResult {
+    override fun create(command: CreateHealthRecordCommand, access: HouseholdAccess): HealthRecordResult = transaction.execute {
         requirePermission(access, HouseholdPermission.RECORD_HEALTH)
         val pet = requirePet(command.petId, access)
         validateOccurredAt(command.occurredAt)
@@ -103,7 +110,8 @@ class HealthAppService(
             actorTutorId = access.actorTutorId, petId = command.petId,
             summary = "${saved.title} foi adicionado ao histórico de saúde", happenedAt = now,
         ))
-        return saved.toResult(emptyList())
+        prepareKnowledge(saved, now)
+        saved.toResult(emptyList())
     }
 
     override fun update(command: UpdateHealthRecordCommand, access: HouseholdAccess): HealthRecordResult = transaction.execute {
@@ -128,6 +136,7 @@ class HealthAppService(
                 updatedAt = clock.now().toInstant(),
             ),
         )
+        prepareKnowledge(saved, saved.updatedAt)
         saved.toResult(attachmentResults(saved.id))
     }
 
@@ -162,7 +171,9 @@ class HealthAppService(
             requireVersion(record.version, expectedVersion)
             attachments.listByRecordIds(listOf(recordId))[recordId].orEmpty().forEach { item ->
                 media.findById(item.mediaAssetId)?.let { media.save(it.copy(status = MediaStatus.PENDING_DELETE)) }
+                deleteKnowledge(access.householdId, KnowledgeSourceType.HEALTH_ATTACHMENT, item.mediaAssetId, clock.now().toInstant())
             }
+            deleteKnowledge(access.householdId, KnowledgeSourceType.HEALTH_RECORD, record.id.value, clock.now().toInstant())
             records.delete(recordId)
         }
     }
@@ -269,6 +280,28 @@ class HealthAppService(
     private fun HealthMeasurement.toResult() = HealthMeasurementResult(
         id.value, version, petId.value, type, value, unit, measuredAt, notes, createdByTutorId.value,
     )
+
+    private fun prepareKnowledge(record: HealthRecord, at: Instant) {
+        val sourceRepository = knowledgeSources ?: return
+        val outboxRepository = knowledgeOutbox ?: return
+        val prepared = sourceRepository.prepare(KnowledgeSourceFactory.healthRecord(record, at, embeddingSignature))
+        if (prepared.changed) {
+            outboxRepository.enqueue(
+                prepared.source.id,
+                KnowledgeIndexOperation.UPSERT,
+                "upsert:${prepared.source.id}:${prepared.source.checksum}",
+                at,
+            )
+        }
+    }
+
+    private fun deleteKnowledge(householdId: HouseholdId, type: KnowledgeSourceType, resourceId: UUID, at: Instant) {
+        val sourceRepository = knowledgeSources ?: return
+        val outboxRepository = knowledgeOutbox ?: return
+        sourceRepository.markDeleted(householdId, type, resourceId, at)?.let { source ->
+            outboxRepository.enqueue(source.id, KnowledgeIndexOperation.DELETE, "delete:${source.id}:${source.updatedAt}", at)
+        }
+    }
 
     companion object {
         private val FUTURE_TOLERANCE = Duration.ofMinutes(5)

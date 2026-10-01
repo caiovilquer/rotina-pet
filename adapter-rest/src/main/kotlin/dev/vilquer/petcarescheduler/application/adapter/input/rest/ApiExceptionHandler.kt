@@ -110,13 +110,13 @@ class ApiExceptionHandler {
 
     @ExceptionHandler(RateLimitException::class)
     fun handleRateLimit(ex: RateLimitException): ResponseEntity<ApiError> {
-        val body = ApiError(429, "Too Many Requests", ex.message ?: "Limite de tentativas excedido")
+        val body = ApiError(429, ex.publicCode, ex.message ?: "Limite de tentativas excedido")
         return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(body)
     }
 
     @ExceptionHandler(UpstreamServiceException::class)
     fun handleUpstream(ex: UpstreamServiceException): ResponseEntity<ApiError> {
-        val body = ApiError(502, "Bad Gateway", ex.message ?: "Falha ao consultar serviço externo")
+        val body = ApiError(502, ex.publicCode, ex.message ?: "Falha ao consultar serviço externo")
         return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(body)
     }
 

@@ -32,7 +32,7 @@ class TutorMapperIntegrationTest : AbstractPostgresIntegrationTest() {
     }
 
     private fun createTestTutor(): Tutor {
-        // id null: o identity do H2 é compartilhado entre os testes do mesmo
+        // id null: a sequence do banco é compartilhada entre os testes do mesmo
         // contexto, então qualquer id pré-fixado quebra a FK criada na V5
         return Tutor(
             id = null,

@@ -54,6 +54,20 @@ banhos, serviços etc.) e receber lembretes por e‑mail no dia correto.
   - Custos realizados separados de previsões dos planos, com acesso financeiro
     exclusivo do proprietário e destaques estritamente descritivos.
 
+- **Assistente com consultas estruturadas e fontes**
+  - Agenda, vacinas, medicamentos, medições, custos e responsáveis consultados
+    por ferramentas determinísticas, sem SQL gerado por modelo.
+  - Notas e PDFs pesquisados com FTS + pgvector, autorização antes do ranking,
+    citações verificadas e resposta segura quando a evidência é insuficiente.
+  - Indexação assíncrona e repetível, com estado visível no documento e
+    exclusão imediata do conjunto pesquisável quando a origem é removida.
+
+- **Criação segura por WhatsApp**
+  - Vínculo temporário de uso único, identidade e payloads sensíveis cifrados,
+    webhook assinado e processamento assíncrono por inbox/outbox.
+  - Mensagens de texto geram rascunhos com botões para confirmar, corrigir ou
+    cancelar; reentregas do webhook e cliques repetidos não duplicam o plano.
+
 - **Lembretes automáticos e confiáveis**
   - Um scheduler a cada 5 minutos estende o horizonte e detecta ocorrências no
     momento configurado, apenas
@@ -71,7 +85,7 @@ banhos, serviços etc.) e receber lembretes por e‑mail no dia correto.
   - Redefinição de senha com token de uso único; a troca de senha e a
     emissão/invalidação de tokens são atômicas (`TransactionPort`).
   - OpenAPI/Swagger UI em `/swagger-ui.html`.
-  - Console H2 em `/h2-console` para inspeção do banco em memória.
+  - PostgreSQL 16 + pgvector no ambiente local e nas suítes de integração.
 
 - **Observabilidade**
   - Spring Boot Actuator: `/actuator/health` (público), `/actuator/info` e
@@ -82,7 +96,7 @@ banhos, serviços etc.) e receber lembretes por e‑mail no dia correto.
 
 ## Arquitetura
 
-Estrutura hexagonal (ports & adapters) em sete módulos. `core` e `application`
+Estrutura hexagonal (ports & adapters) em oito módulos. `core` e `application`
 são Kotlin puro — nenhuma dependência de Spring, Jakarta ou qualquer
 framework — e essa fronteira é verificada em tempo de teste (testes de
 arquitetura com [Konsist](https://docs.konsist.lemonappdev.com/), rodando via
@@ -92,9 +106,10 @@ arquitetura com [Konsist](https://docs.konsist.lemonappdev.com/), rodando via
 |-------------------------|---------------------------------------------------------------------------|
 | **core**                | Entidades (Tutor, Pet, Event) e Value Objects (Email, Phone, etc.). Zero dependências. |
 | **application**         | Ports de entrada/saída, comandos, resultados e os use cases (services). Kotlin puro — sem Spring. |
+| **adapter-ai**          | Extração estruturada, embeddings, PDF e resposta fundamentada atrás de ports por capacidade. O provider local de desenvolvimento é determinístico e não escreve no domínio. |
 | **adapter-rest**        | Controllers REST, DTOs, `ApiExceptionHandler`, Spring Security (JWT, CORS), emissão de token, hash de senha. |
 | **adapter-persistence** | Entidades JPA, repositórios Spring Data, mappers, adapters de persistência e migrações Flyway. Testes de integração sobem um Postgres real via Testcontainers (requer Docker). |
-| **adapter-messaging**   | Cliente HTTP (WebClient) e adapters de e-mail (MailerSend).              |
+| **adapter-messaging**   | Adapters de e-mail e do canal WhatsApp (segurança, gateway fake e Cloud API da Meta). |
 | **adapter-storage**     | Adaptador S3 compatível com Railway Buckets e Cloudflare R2; URLs pré-assinadas curtas para leitura e escrita. |
 | **bootstrap**           | Ponto de entrada Spring Boot: wiring manual dos use cases (`UseCaseWiring`), schedulers, configuração de ambiente (`application*.yml`, SSL, JVM). |
 
@@ -113,32 +128,41 @@ O modelo de autorização, os convites e a operação do Ciclo 4 estão em
 [`docs/cycle-4-shared-care.md`](docs/cycle-4-shared-care.md).
 As garantias de privacidade, o modelo financeiro e a implantação do Ciclo 5
 estão em [`docs/cycle-5-veterinary-finance.md`](docs/cycle-5-veterinary-finance.md).
+As decisões duráveis da evolução de IA estão em [`docs/adr`](docs/adr/README.md).
+O fluxo de rascunhos, suas flags, privacidade e avaliação estão em
+[`docs/ai-care-drafts.md`](docs/ai-care-drafts.md).
+As consultas estruturadas, o RAG, a indexação, as flags e os quality gates estão
+em [`docs/ai-pet-history.md`](docs/ai-pet-history.md).
+O vínculo, a configuração da Meta e a operação do canal de texto estão em
+[`docs/whatsapp-text-integration.md`](docs/whatsapp-text-integration.md).
 
 ## Requisitos
 
 - JDK 21+
 - Kotlin 2.0 / Spring Boot 3.5 (versões centralizadas em `gradle/libs.versions.toml`)
-- Docker (para MailHog, MinIO e para os testes de `adapter-persistence`, que
-  sobem um Postgres real via Testcontainers — `./gradlew check` falha sem
+- Docker (para PostgreSQL/pgvector, MailHog, MinIO e para os testes de integração,
+  que sobem o mesmo banco via Testcontainers — `./gradlew check` falha sem
   Docker disponível)
 - Gradle Wrapper (`./gradlew`)
 
 ## Executando o projeto
 
 ```bash
-# MailHog (e-mail) + MinIO (bucket S3 local)
+# PostgreSQL/pgvector + MailHog (e-mail) + MinIO (bucket S3 local)
 docker compose up -d
 
-# API com H2, swagger e object storage apontando para o MinIO
+# API com PostgreSQL, Swagger e object storage apontando para o MinIO
 scripts/run-dev.sh
 ```
 
-Sem MinIO (storage desligado), basta `MAIL_FROM=noreply@localhost ./gradlew :bootstrap:bootRun`.
+Com apenas o PostgreSQL local ativo, o storage pode permanecer desligado e a API
+pode ser iniciada com `MAIL_FROM=noreply@localhost ./gradlew :bootstrap:bootRun`.
 
 | Serviço   | URL |
 |-----------|-----|
 | API       | `https://localhost:8443` |
 | Swagger   | `https://localhost:8443/swagger-ui.html` |
+| PostgreSQL | `localhost:5432` (`rotinapet` / `rotinapet`) |
 | MailHog   | `http://localhost:8025` |
 | MinIO API | `http://localhost:9000` |
 | MinIO UI  | `http://localhost:9001` (user/pass: `minioadmin` / `minioadmin`) |
@@ -153,4 +177,9 @@ scripts/run-prod.sh
 ```
 # Timezones e contrato de datas
 
-O timezone canônico da agenda pertence ao household e usa um identificador IANA (por exemplo, `America/New_York`). Households legados sem valor persistido mantêm o fallback compatível `America/Sao_Paulo`; `APP_TIMEZONE` configura apenas o relógio padrão e crons globais, não substitui o fuso de uma família. `startAt`/`dueAt` de cuidados continuam como wall-clock `LocalDateTime`: inputs sem offset são interpretados no timezone do household, enquanto ISO 8601 com offset ou `Z` é tratado como instante e convertido para o wall-clock do household. As respostas de household e agenda incluem `timezone`. Saúde, despesas e conclusões permanecem `Instant`/UTC. A Opção A evita backfill destrutivo; uma futura migração para `Instant` por plano deve preservar também o `zoneId` original.
+Cada plano preserva um `zoneId` IANA e armazena `startAt`/`dueAt` como `Instant`
+canônico. Inputs sem offset são interpretados no fuso do plano; valores ISO
+8601 com offset ou `Z` mantêm o instante informado. A API devolve o instante,
+a representação local e o timezone. `FIXED_INTERVAL` mede duração transcorrida;
+regras de calendário e horários diários preservam o relógio local conforme o
+[ADR-002](docs/adr/0002-schedule-rule-v2.md).

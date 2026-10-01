@@ -2,6 +2,8 @@ package dev.vilquer.petcarescheduler.application.config
 
 import dev.vilquer.petcarescheduler.application.service.AuthAppService
 import dev.vilquer.petcarescheduler.application.service.CareAppService
+import dev.vilquer.petcarescheduler.application.service.CareDraftAppService
+import dev.vilquer.petcarescheduler.application.service.CareDraftSettings
 import dev.vilquer.petcarescheduler.application.service.CareReminderRelayService
 import dev.vilquer.petcarescheduler.application.service.CareEscalationRelayService
 import dev.vilquer.petcarescheduler.application.service.EventAppService
@@ -19,10 +21,21 @@ import dev.vilquer.petcarescheduler.application.service.SecurityMaintenanceServi
 import dev.vilquer.petcarescheduler.application.service.TutorAppService
 import dev.vilquer.petcarescheduler.application.service.FinanceAppService
 import dev.vilquer.petcarescheduler.application.service.VeterinaryReportAppService
+import dev.vilquer.petcarescheduler.application.service.KnowledgeIndexSettings
+import dev.vilquer.petcarescheduler.application.service.KnowledgeIndexingService
+import dev.vilquer.petcarescheduler.application.service.PetHistoryAssistantService
+import dev.vilquer.petcarescheduler.application.service.PetHistoryAssistantSettings
+import dev.vilquer.petcarescheduler.application.service.StructuredPetHistoryCatalog
+import dev.vilquer.petcarescheduler.application.service.WhatsAppAppService
+import dev.vilquer.petcarescheduler.application.service.WhatsAppSettings
 import dev.vilquer.petcarescheduler.usecase.contract.drivenports.ClockPort
 import dev.vilquer.petcarescheduler.usecase.contract.drivenports.CareOccurrenceActionRepositoryPort
 import dev.vilquer.petcarescheduler.usecase.contract.drivenports.CareOccurrenceRepositoryPort
 import dev.vilquer.petcarescheduler.usecase.contract.drivenports.CarePlanRepositoryPort
+import dev.vilquer.petcarescheduler.usecase.contract.drivenports.CarePlanMaterializationCursorRepositoryPort
+import dev.vilquer.petcarescheduler.usecase.contract.drivenports.CareDraftRepositoryPort
+import dev.vilquer.petcarescheduler.usecase.contract.drivenports.AiInteractionRepositoryPort
+import dev.vilquer.petcarescheduler.usecase.contract.drivenports.CareInstructionExtractorPort
 import dev.vilquer.petcarescheduler.usecase.contract.drivenports.CareReminderOutboxPort
 import dev.vilquer.petcarescheduler.usecase.contract.drivenports.CareEscalationOutboxPort
 import dev.vilquer.petcarescheduler.usecase.contract.drivenports.EventRepositoryPort
@@ -54,6 +67,22 @@ import dev.vilquer.petcarescheduler.usecase.contract.drivenports.TransactionPort
 import dev.vilquer.petcarescheduler.usecase.contract.drivenports.TutorRepositoryPort
 import dev.vilquer.petcarescheduler.usecase.contract.drivenports.ExpenseRepositoryPort
 import dev.vilquer.petcarescheduler.usecase.contract.drivenports.VeterinaryShareRepositoryPort
+import dev.vilquer.petcarescheduler.usecase.contract.drivenports.AssistantAnswerRepositoryPort
+import dev.vilquer.petcarescheduler.usecase.contract.drivenports.DocumentTextExtractorPort
+import dev.vilquer.petcarescheduler.usecase.contract.drivenports.EmbeddingPort
+import dev.vilquer.petcarescheduler.usecase.contract.drivenports.GroundedAnswerGeneratorPort
+import dev.vilquer.petcarescheduler.usecase.contract.drivenports.KnowledgeIndexOutboxPort
+import dev.vilquer.petcarescheduler.usecase.contract.drivenports.KnowledgeSourceRepositoryPort
+import dev.vilquer.petcarescheduler.usecase.contract.drivenports.SemanticSearchPort
+import dev.vilquer.petcarescheduler.usecase.contract.drivenports.WhatsAppConversationRepositoryPort
+import dev.vilquer.petcarescheduler.usecase.contract.drivenports.WhatsAppCryptoPort
+import dev.vilquer.petcarescheduler.usecase.contract.drivenports.WhatsAppGatewayPort
+import dev.vilquer.petcarescheduler.usecase.contract.drivenports.WhatsAppIdentityRepositoryPort
+import dev.vilquer.petcarescheduler.usecase.contract.drivenports.WhatsAppInboxRepositoryPort
+import dev.vilquer.petcarescheduler.usecase.contract.drivenports.WhatsAppLinkTokenRepositoryPort
+import dev.vilquer.petcarescheduler.usecase.contract.drivenports.WhatsAppOutboxRepositoryPort
+import dev.vilquer.petcarescheduler.usecase.contract.drivingports.CareDraftUseCase
+import dev.vilquer.petcarescheduler.usecase.contract.drivingports.FinanceOverviewUseCase
 import org.springframework.boot.context.properties.bind.Binder
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
@@ -68,6 +97,115 @@ import java.time.Duration
  */
 @Configuration
 class UseCaseWiring {
+
+    @Bean
+    fun whatsappSettings(environment: Environment) = WhatsAppSettings(
+        enabled = environment.getProperty("app.whatsapp.enabled", Boolean::class.java, false),
+        businessPhoneNumberId = environment.getProperty("app.whatsapp.business-phone-number-id", ""),
+        businessPhoneNumber = environment.getProperty("app.whatsapp.business-phone-number", ""),
+        linkTtl = environment.getProperty("app.whatsapp.link-ttl", Duration::class.java, Duration.ofMinutes(10)),
+        conversationTtl = environment.getProperty("app.whatsapp.conversation-ttl", Duration::class.java, Duration.ofHours(24)),
+        inboxBatchSize = environment.getProperty("app.whatsapp.inbox-batch-size", Int::class.java, 20),
+        outboxBatchSize = environment.getProperty("app.whatsapp.outbox-batch-size", Int::class.java, 20),
+        maxAttempts = environment.getProperty("app.whatsapp.max-attempts", Int::class.java, 5),
+    )
+
+    @Bean
+    fun whatsappAppService(
+        linkTokens: WhatsAppLinkTokenRepositoryPort,
+        identities: WhatsAppIdentityRepositoryPort,
+        conversations: WhatsAppConversationRepositoryPort,
+        inbox: WhatsAppInboxRepositoryPort,
+        outbox: WhatsAppOutboxRepositoryPort,
+        crypto: WhatsAppCryptoPort,
+        gateway: WhatsAppGatewayPort,
+        careDrafts: CareDraftUseCase,
+        households: HouseholdRepositoryPort,
+        members: HouseholdMemberRepositoryPort,
+        transaction: TransactionPort,
+        clock: ClockPort,
+        settings: WhatsAppSettings,
+    ) = WhatsAppAppService(
+        linkTokens, identities, conversations, inbox, outbox, crypto, gateway, careDrafts,
+        households, members, transaction, clock, settings,
+    )
+
+    @Bean
+    fun petHistoryAssistantSettings(environment: Environment) = PetHistoryAssistantSettings(
+        ragEnabled = environment.getProperty("app.ai.rag-enabled", Boolean::class.java, false),
+        maxQuestionCharacters = environment.getProperty("app.ai.max-question-characters", Int::class.java, 1_000),
+        retrievalLimit = environment.getProperty("app.ai.retrieval-limit", Int::class.java, 5),
+        minimumSemanticScore = environment.getProperty("app.ai.minimum-semantic-score", Double::class.java, 0.08),
+    )
+
+    @Bean
+    fun knowledgeIndexSettings(environment: Environment) = KnowledgeIndexSettings(
+        enabled = environment.getProperty("app.ai.rag-enabled", Boolean::class.java, false),
+        batchSize = environment.getProperty("app.ai.index-batch-size", Int::class.java, 10),
+        maxAttempts = environment.getProperty("app.ai.index-max-attempts", Int::class.java, 5),
+    )
+
+    @Bean
+    fun structuredPetHistoryCatalog(
+        records: HealthRecordRepositoryPort,
+        measurements: HealthMeasurementRepositoryPort,
+        occurrences: CareOccurrenceRepositoryPort,
+        finances: FinanceOverviewUseCase,
+        plans: CarePlanRepositoryPort,
+        members: HouseholdMemberRepositoryPort,
+    ) = StructuredPetHistoryCatalog(records, measurements, occurrences, finances, plans, members)
+
+    @Bean
+    fun petHistoryAssistantService(
+        catalog: StructuredPetHistoryCatalog,
+        pets: PetRepositoryPort,
+        embeddings: EmbeddingPort,
+        search: SemanticSearchPort,
+        generator: GroundedAnswerGeneratorPort,
+        answers: AssistantAnswerRepositoryPort,
+        interactions: AiInteractionRepositoryPort,
+        transaction: TransactionPort,
+        clock: ClockPort,
+        settings: PetHistoryAssistantSettings,
+        rateLimiter: RateLimiterService,
+    ) = PetHistoryAssistantService(
+        catalog, pets, embeddings, search, generator, answers, interactions, transaction, clock, settings, rateLimiter,
+    )
+
+    @Bean
+    fun knowledgeIndexingService(
+        sources: KnowledgeSourceRepositoryPort,
+        outbox: KnowledgeIndexOutboxPort,
+        records: HealthRecordRepositoryPort,
+        media: MediaAssetRepositoryPort,
+        storage: ObjectStoragePort,
+        extractor: DocumentTextExtractorPort,
+        embeddings: EmbeddingPort,
+        transaction: TransactionPort,
+        clock: ClockPort,
+        settings: KnowledgeIndexSettings,
+    ) = KnowledgeIndexingService(sources, outbox, records, media, storage, extractor, embeddings, transaction, clock, settings)
+
+    @Bean
+    fun careDraftSettings(environment: Environment) = CareDraftSettings(
+        enabled = environment.getProperty("app.ai.enabled", Boolean::class.java, false),
+        ttl = environment.getProperty("app.ai.draft-ttl", Duration::class.java, Duration.ofHours(24)),
+        maxInputCharacters = environment.getProperty("app.ai.max-input-characters", Int::class.java, 4_000),
+    )
+
+    @Bean
+    fun careDraftAppService(
+        drafts: CareDraftRepositoryPort,
+        interactions: AiInteractionRepositoryPort,
+        extractor: CareInstructionExtractorPort,
+        carePlans: dev.vilquer.petcarescheduler.usecase.contract.drivingports.CarePlanUseCase,
+        pets: PetRepositoryPort,
+        members: HouseholdMemberRepositoryPort,
+        transaction: TransactionPort,
+        clock: ClockPort,
+        settings: CareDraftSettings,
+        rateLimiter: RateLimiterService,
+    ) = CareDraftAppService(drafts, interactions, extractor, carePlans, pets, members, transaction, clock, settings, rateLimiter)
 
     @Bean
     fun financeAppService(
@@ -110,6 +248,7 @@ class UseCaseWiring {
     @Bean
     fun careAppService(
         plans: CarePlanRepositoryPort,
+        cursors: CarePlanMaterializationCursorRepositoryPort,
         occurrences: CareOccurrenceRepositoryPort,
         actions: CareOccurrenceActionRepositoryPort,
         pets: PetRepositoryPort,
@@ -118,10 +257,9 @@ class UseCaseWiring {
         escalationOutbox: CareEscalationOutboxPort,
         householdMembers: HouseholdMemberRepositoryPort,
         householdActivities: HouseholdActivityRepositoryPort,
-        households: HouseholdRepositoryPort,
         transaction: TransactionPort,
         clock: ClockPort,
-    ) = CareAppService(plans, occurrences, actions, pets, tutors, reminderOutbox, escalationOutbox, householdMembers, householdActivities, transaction, clock, households)
+    ) = CareAppService(plans, cursors, occurrences, actions, pets, tutors, reminderOutbox, escalationOutbox, householdMembers, householdActivities, transaction, clock)
 
     @Bean
     fun careEscalationRelayService(
@@ -130,16 +268,16 @@ class UseCaseWiring {
         notifier: NotificationPort,
         activities: HouseholdActivityRepositoryPort,
         clock: ClockPort,
-        households: HouseholdRepositoryPort,
-    ) = CareEscalationRelayService(outbox, occurrences, notifier, activities, clock, households)
+        members: HouseholdMemberRepositoryPort,
+    ) = CareEscalationRelayService(outbox, occurrences, notifier, activities, clock, members)
 
     @Bean
     fun careReminderRelayService(
         outbox: CareReminderOutboxPort,
         occurrences: CareOccurrenceRepositoryPort,
         notifier: NotificationPort,
-        households: HouseholdRepositoryPort,
-    ) = CareReminderRelayService(outbox, occurrences, notifier, households)
+        members: HouseholdMemberRepositoryPort,
+    ) = CareReminderRelayService(outbox, occurrences, notifier, members)
 
     @Bean
     fun authAppService(
@@ -182,7 +320,15 @@ class UseCaseWiring {
         healthRecords: HealthRecordRepositoryPort,
         healthAttachments: HealthRecordAttachmentRepositoryPort,
         transaction: TransactionPort,
-    ) = MediaAppService(media, storage, pets, tutors, healthRecords, healthAttachments, transaction)
+        knowledgeSources: KnowledgeSourceRepositoryPort,
+        knowledgeOutbox: KnowledgeIndexOutboxPort,
+        embeddings: EmbeddingPort,
+    ) = MediaAppService(
+        media, storage, pets, tutors, healthRecords, healthAttachments, transaction,
+        knowledgeSources = knowledgeSources,
+        knowledgeOutbox = knowledgeOutbox,
+        embeddingSignature = embeddings.signature,
+    )
 
     @Bean
     fun healthAppService(
@@ -194,7 +340,13 @@ class UseCaseWiring {
         transaction: TransactionPort,
         clock: ClockPort,
         activities: HouseholdActivityRepositoryPort,
-    ) = HealthAppService(records, measurements, attachments, media, pets, transaction, clock, activities)
+        knowledgeSources: KnowledgeSourceRepositoryPort,
+        knowledgeOutbox: KnowledgeIndexOutboxPort,
+        embeddings: EmbeddingPort,
+    ) = HealthAppService(
+        records, measurements, attachments, media, pets, transaction, clock, activities,
+        knowledgeSources, knowledgeOutbox, embeddings.signature,
+    )
 
     @Bean
     fun reminderRelayService(

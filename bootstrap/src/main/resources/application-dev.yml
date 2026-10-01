@@ -1,9 +1,9 @@
 spring:
   datasource:
-    url: jdbc:h2:mem:rotinapet;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;MODE=PostgreSQL
-    driver-class-name: org.h2.Driver
-    username: sa
-    password:
+    url: ${JDBC_URL:jdbc:postgresql://localhost:5432/rotinapet}
+    driver-class-name: org.postgresql.Driver
+    username: ${PGUSER:rotinapet}
+    password: ${PGPASSWORD:rotinapet}
   jpa:
     open-in-view: false
     hibernate:
@@ -14,10 +14,6 @@ spring:
         format_sql: true
   flyway:
     enabled: true
-  h2:
-    console:
-      enabled: true
-      path: /h2-console
 
   mail:
     host: localhost
@@ -43,6 +39,9 @@ springdoc:
       scopes: openid,profile,email
 
 app:
+  ai:
+    enabled: ${AI_ENABLED:true}
+    rag-enabled: ${AI_RAG_ENABLED:true}
   seed:
     enabled: true
   mail:

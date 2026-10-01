@@ -30,7 +30,7 @@ data class ForecastCostResult(
     val occurrenceId: UUID,
     val petId: Long,
     val title: String,
-    val dueAt: LocalDateTime,
+    val dueAt: Instant,
     val amount: BigDecimal,
     val currency: String,
 )

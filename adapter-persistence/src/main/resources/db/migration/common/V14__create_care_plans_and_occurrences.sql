@@ -96,7 +96,7 @@ CREATE TABLE care_reminder_outbox (
 );
 
 -- UUIDs determinísticos permitem relacionar os registros legados sem depender
--- de funções específicas do PostgreSQL ou do H2.
+-- de funções específicas, preservando o backfill determinístico.
 INSERT INTO care_plan (
     id, schedule_revision, tutor_id, pet_id, responsible_tutor_id, type, title, instructions,
     start_at, frequency, interval_count, repetitions, final_date,

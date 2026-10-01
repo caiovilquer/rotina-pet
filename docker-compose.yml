@@ -1,5 +1,20 @@
-version: '3.8'
 services:
+  postgres:
+    image: pgvector/pgvector:0.8.2-pg16-bookworm
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: rotinapet
+      POSTGRES_USER: rotinapet
+      POSTGRES_PASSWORD: rotinapet
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rotinapet -d rotinapet && psql -U rotinapet -d rotinapet -tAc \"SELECT 1 FROM pg_available_extensions WHERE name = 'vector'\" | grep -q 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
   mailhog:
     image: mailhog/mailhog:v1.0.1
     ports:
@@ -39,4 +54,5 @@ services:
       "
 
 volumes:
+  postgres-data:
   minio-data:

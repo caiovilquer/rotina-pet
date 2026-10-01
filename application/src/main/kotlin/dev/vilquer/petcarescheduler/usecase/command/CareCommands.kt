@@ -3,11 +3,12 @@ package dev.vilquer.petcarescheduler.usecase.command
 import dev.vilquer.petcarescheduler.core.domain.care.CareOccurrenceId
 import dev.vilquer.petcarescheduler.core.domain.care.CareOccurrenceStatus
 import dev.vilquer.petcarescheduler.core.domain.care.CarePlanId
+import dev.vilquer.petcarescheduler.core.domain.care.ScheduleRule
 import dev.vilquer.petcarescheduler.core.domain.entity.EventType
 import dev.vilquer.petcarescheduler.core.domain.entity.PetId
 import dev.vilquer.petcarescheduler.core.domain.entity.TutorId
-import dev.vilquer.petcarescheduler.core.domain.valueobject.Recurrence
-import java.time.LocalDateTime
+import java.time.Instant
+import java.time.ZoneId
 import java.util.UUID
 import java.math.BigDecimal
 
@@ -16,8 +17,9 @@ data class CreateCarePlanCommand(
     val type: EventType,
     val title: String,
     val instructions: String?,
-    val startAt: LocalDateTime,
-    val recurrence: Recurrence?,
+    val startAt: Instant,
+    val zoneId: ZoneId,
+    val scheduleRule: ScheduleRule,
     val reminderMinutesBefore: Int,
     val responsibleTutorId: TutorId? = null,
     val critical: Boolean = false,
@@ -25,6 +27,7 @@ data class CreateCarePlanCommand(
     val escalationTutorId: TutorId? = null,
     val estimatedCostAmount: BigDecimal? = null,
     val estimatedCostCurrency: String? = null,
+    val sourceDraftId: UUID? = null,
 )
 
 data class UpdateCarePlanCommand(
@@ -32,8 +35,9 @@ data class UpdateCarePlanCommand(
     val type: EventType,
     val title: String,
     val instructions: String?,
-    val startAt: LocalDateTime,
-    val recurrence: Recurrence?,
+    val startAt: Instant,
+    val zoneId: ZoneId,
+    val scheduleRule: ScheduleRule,
     val reminderMinutesBefore: Int,
     val responsibleTutorId: TutorId? = null,
     val critical: Boolean = false,
@@ -61,8 +65,8 @@ data class UndoCareOccurrenceCommand(
 )
 
 data class SearchCareOccurrencesQuery(
-    val from: LocalDateTime,
-    val to: LocalDateTime,
+    val from: Instant,
+    val to: Instant,
     val petId: PetId? = null,
     val type: EventType? = null,
     val status: CareOccurrenceStatus? = null,

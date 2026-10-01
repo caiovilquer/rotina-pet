@@ -17,7 +17,6 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.time.Instant
-import java.time.LocalDateTime
 import java.util.UUID
 
 class CareReminderRelayServiceTest {
@@ -31,7 +30,7 @@ class CareReminderRelayServiceTest {
         outbox.enqueueIfAbsent(message(occurrence.id))
         val notifier = FakeNotifier()
 
-        CareReminderRelayService(outbox, InMemoryCareOccurrenceRepo(listOf(occurrence)), notifier)
+        CareReminderRelayService(outbox, InMemoryCareOccurrenceRepo(listOf(occurrence)), notifier, dev.vilquer.petcarescheduler.application.FakeHouseholdMemberRepo(tutorId))
             .dispatchPendingCareReminders()
 
         assertEquals("Antibiótico", notifier.notifiedCare.single().title)
@@ -43,7 +42,7 @@ class CareReminderRelayServiceTest {
         val scheduled = occurrence(CareOccurrenceStatus.SCHEDULED)
         val failedOutbox = FakeCareReminderOutbox().also { it.enqueueIfAbsent(message(scheduled.id)) }
         val failingNotifier = FakeNotifier().also { it.deliverySucceeds = false }
-        CareReminderRelayService(failedOutbox, InMemoryCareOccurrenceRepo(listOf(scheduled)), failingNotifier)
+        CareReminderRelayService(failedOutbox, InMemoryCareOccurrenceRepo(listOf(scheduled)), failingNotifier, dev.vilquer.petcarescheduler.application.FakeHouseholdMemberRepo(tutorId))
             .dispatchPendingCareReminders()
         assertEquals(1, failedOutbox.all().single().attempts)
         assertFalse(failedOutbox.isSent(failedOutbox.all().single().id))
@@ -51,10 +50,10 @@ class CareReminderRelayServiceTest {
         val completed = occurrence(CareOccurrenceStatus.COMPLETED)
         val staleOutbox = FakeCareReminderOutbox().also { it.enqueueIfAbsent(message(completed.id)) }
         val notifier = FakeNotifier()
-        CareReminderRelayService(staleOutbox, InMemoryCareOccurrenceRepo(listOf(completed)), notifier)
+        CareReminderRelayService(staleOutbox, InMemoryCareOccurrenceRepo(listOf(completed)), notifier, dev.vilquer.petcarescheduler.application.FakeHouseholdMemberRepo(tutorId))
             .dispatchPendingCareReminders()
         assertTrue(notifier.notifiedCare.isEmpty())
-        assertTrue(staleOutbox.isSent(staleOutbox.all().single().id))
+        assertTrue(staleOutbox.isCancelled(staleOutbox.all().single().id))
     }
 
     private fun message(id: CareOccurrenceId) = CareReminderOutboxMessage(
@@ -63,8 +62,8 @@ class CareReminderRelayServiceTest {
 
     private fun occurrence(status: CareOccurrenceStatus): CareOccurrence = CareOccurrence(
         id = CareOccurrenceId(UUID.randomUUID()), planId = CarePlanId(UUID.randomUUID()), scheduleRevision = 0,
-        householdId = TEST_HOUSEHOLD_ID, tutorId = tutorId, petId = PetId(1), responsibleTutorId = tutorId, sequence = 0, type = EventType.MEDICINE,
-        title = "Antibiótico", dueAt = LocalDateTime.of(2026, 7, 12, 10, 0), status = status,
+        householdId = TEST_HOUSEHOLD_ID, tutorId = tutorId, petId = PetId(1), responsibleTutorId = tutorId, sequence = 0L, type = EventType.MEDICINE,
+        title = "Antibiótico", dueAt = Instant.parse("2026-07-12T10:00:00Z"), status = status,
         completedAt = if (status == CareOccurrenceStatus.COMPLETED) now else null,
         completedByTutorId = if (status == CareOccurrenceStatus.COMPLETED) tutorId else null,
         createdAt = now, updatedAt = now,
