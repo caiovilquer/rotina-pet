@@ -7,7 +7,7 @@ import org.springframework.stereotype.Component
 
 @Component
 class CareEscalationRelayScheduler(private val relay: DispatchPendingCareEscalationsUseCase) {
-    @Scheduled(fixedDelay = 5 * 60 * 1000L, initialDelay = 90 * 1000L)
+    @Scheduled(cron = "0 */20 * * * *", zone = "\${app.timezone}")
     @SchedulerLock(name = "dispatchPendingCareEscalations", lockAtMostFor = "PT4M", lockAtLeastFor = "PT30S")
     fun dispatch() = relay.dispatchPendingCareEscalations()
 }

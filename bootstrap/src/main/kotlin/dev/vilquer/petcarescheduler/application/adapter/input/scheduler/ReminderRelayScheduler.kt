@@ -10,11 +10,11 @@ class ReminderRelayScheduler(
     private val dispatchPendingReminders: DispatchPendingRemindersUseCase
 ) {
     /**
-     * Roda a cada 5 minutos (não uma vez por dia como a detecção): um lembrete
-     * que falhou às 8h porque a API de e-mail estava fora não deve esperar até
-     * o dia seguinte para ser tentado de novo.
+     * Roda a cada 20 minutos, alinhado às demais tarefas frequentes para abrir
+     * uma janela de inatividade maior que os 10 minutos exigidos pelo Railway.
+     * Durante a hibernação, os lembretes aguardam a aplicação voltar a funcionar.
      */
-    @Scheduled(fixedDelay = 5 * 60 * 1000L, initialDelay = 60 * 1000L)
+    @Scheduled(cron = "0 */20 * * * *", zone = "\${app.timezone}")
     @SchedulerLock(name = "dispatchPendingReminders", lockAtMostFor = "PT4M", lockAtLeastFor = "PT30S")
     fun dispatchPendingReminders() {
         dispatchPendingReminders.dispatchPendingReminders()

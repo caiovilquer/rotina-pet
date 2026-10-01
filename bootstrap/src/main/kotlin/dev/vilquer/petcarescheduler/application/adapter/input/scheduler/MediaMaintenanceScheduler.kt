@@ -7,7 +7,7 @@ import org.springframework.stereotype.Component
 
 @Component
 class MediaMaintenanceScheduler(private val media: MediaMaintenanceUseCase) {
-    @Scheduled(cron = "0 */15 * * * *", zone = "\${app.timezone}")
+    @Scheduled(cron = "0 */20 * * * *", zone = "\${app.timezone}")
     @SchedulerLock(name = "cleanupMediaAssets", lockAtMostFor = "PT10M", lockAtLeastFor = "PT30S")
     fun cleanupMedia() = media.cleanupMedia()
 }

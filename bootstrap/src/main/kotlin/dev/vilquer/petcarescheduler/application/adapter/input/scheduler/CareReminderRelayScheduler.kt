@@ -7,7 +7,7 @@ import org.springframework.stereotype.Component
 
 @Component
 class CareReminderRelayScheduler(private val relay: DispatchPendingCareRemindersUseCase) {
-    @Scheduled(fixedDelay = 5 * 60 * 1000L, initialDelay = 75 * 1000L)
+    @Scheduled(cron = "0 */20 * * * *", zone = "\${app.timezone}")
     @SchedulerLock(name = "dispatchPendingCareReminders", lockAtMostFor = "PT4M", lockAtLeastFor = "PT30S")
     fun dispatch() = relay.dispatchPendingCareReminders()
 }
